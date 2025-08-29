@@ -20,7 +20,7 @@ try:
 
     for row_num, row in enumerate(sheet.iter_rows(values_only=True), 1):
         print(f"--- Fila {row_num} ---")
-        print(row)
+        # print(row)
         if any(cell is None for cell in row):
             print(f"¡ADVERTENCIA! La fila {row_num} contiene celdas vacías (None).")
         if(row_num > 10): break

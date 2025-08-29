@@ -7,12 +7,15 @@ class AccountsRepo:
         self.cache = TTLCache(ttl_seconds, max_items )
 
     def exists(self, code: str) -> bool:
+        
         if not code: return False
         k = f"acct:{code}"
         hit = self.cache.get(k)
-        if hit is not None: return bool(hit)
+        print(f"hit {k} - {hit} -{bool(None)}")
+        # if hit is not None: return bool(hit)
         try:
             acc = self.sl.get_account(code)
+            # print(f"response : : {acc}")
             ok = acc is not None
             self.cache.set(k, ok)
             return ok

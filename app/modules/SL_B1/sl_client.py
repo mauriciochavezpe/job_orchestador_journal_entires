@@ -42,24 +42,33 @@ class ServiceLayerClient:
         ck = r.headers.get("Set-Cookie")
         if ck: self.cookie = ck
 
-    def request(self, method: str, path: str, *, json=None, params=None, headers=None):
+    def request(self, method: str, path: str, *, json=None, data=None, params=None, headers=None):
         if not self.cookie:
             self.login()
-        hdrs = {"Content-Type": "application/json"}
+        
+        # Default headers. If sending raw data, Content-Type should be in headers.
+        hdrs = {}
+        if json is not None:
+            hdrs["Content-Type"] = "application/json"
+
         if self.cookie: hdrs["Cookie"] = self.cookie
         if headers: hdrs.update(headers)
 
-        r = self.s.request(method, self._url(path), json=json, params=params, headers=hdrs, timeout=self.timeout)
+        r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout)
         if r.status_code == 401:  # sesión vencida → relogin y reintenta 1 vez
             self.login()
             hdrs["Cookie"] = self.cookie or ""
-            r = self.s.request(method, self._url(path), json=json, params=params, headers=hdrs, timeout=self.timeout)
+            r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout)
 
         if r.status_code >= 400:
             try:
                 raise SLRequestError(r.status_code, r.json())
             except ValueError:
                 raise SLRequestError(r.status_code, r.text)
+
+        # For batch responses, we need the raw text and headers
+        if 'multipart/mixed' in r.headers.get('Content-Type', ''):
+            return r
 
         try:
             return r.json()
@@ -80,5 +89,10 @@ class ServiceLayerClient:
             skip += top
 
     def post_journal_entries(self, payload: dict):
-        print(payload)
+        # print(payload)
         return self.request("POST", "/JournalEntries", json=payload)
+
+    def post_batch(self, payload: str, headers: dict):
+        """POST a batch request. Content-Type must be handled by caller."""
+        # print(f"batch: {payload}")
+        return self.request("POST", "/$batch", json=payload, headers=headers)

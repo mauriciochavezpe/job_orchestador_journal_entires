@@ -40,7 +40,7 @@ def collect_items_for_post():
     for batch in read_sheet_in_chunks(cfg.det_path, sheet_name=cfg.sheet_det, chunk_size=100, skip_rows=cfg.skip_rows, header_row=1):
         for it in batch:
             index2 +=1
-            print(f" datos del btch {it}")
+            # print(f" datos del btch {it}")
             d = it["data"]
             key = str(d.get("parentkey") or d.get("ParentKey") or "")
             if not key: continue
@@ -114,12 +114,13 @@ def post_to_sl():
         breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
     )
 
- # ▶ Construye asientos listos para postear
+    # ▶ Construye asientos listos para postear
     started = time.time()
     started_iso = datetime.now().isoformat(timespec="seconds")
     items = collect_items_for_post()  # [{ key, cab, lines }, ...]
-    print(f"items {items}")
+    # print(f"items ")
     res = poster.post_all(items)
+    # print(f"tredsd {res}")
     finished = time.time()
     finished_iso = datetime.now().isoformat(timespec="seconds")
     result_doc = {
@@ -146,12 +147,13 @@ def post_to_sl():
         "results": res["results"],  # [{key, ok, res|err, payload}, ...]
     }
     
-    project_root = Path(__file__).resolve().parent.parent
-    out_path =    _dump_json_result(result_doc, out_dir=project_root / "out")
+    # project_root = Path(__file__).resolve().parent.parent
+    out_path =    _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
     # print("file",out_path)
 # def generate_json(payload):
     
 if __name__ == "__main__":
     # primero haz un dry-run
+    print("fasfasd")
     post_to_sl()
     # cuando veas que el payload está bien, cambia a dry_run=False:
