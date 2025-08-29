@@ -71,12 +71,13 @@ def collect_items_for_post():
             sums[key] = s
     # print(f"total {len(batch)}")
 
-    print(f"total {cab_by_key}")
+    # print(f"total {cab_by_key}")
     # filtrar balanceados
     TOL = Decimal("0.000001")
     items = []
     for key, lines in groups.items():
         s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
+        print(f"d: {s['d']} | c: {s['c']}")
         if abs(s["d"] - s["c"]) <= TOL:
             cab = cab_by_key.get(key)
             if cab:
@@ -99,6 +100,7 @@ def post_to_sl():
         timeout=30_000,
     )
     repo = AccountsRepo(sl, ttl_seconds=3600, max_items=20000)
+    repo.cache.clear() # <--- Limpiar cache al iniciar
     # repo.preload_all()  # opcional
 
     rps = float(os.getenv("SL_RPS", "3"))
@@ -146,7 +148,7 @@ def post_to_sl():
     
     project_root = Path(__file__).resolve().parent.parent
     out_path =    _dump_json_result(result_doc, out_dir=project_root / "out")
-    print("file",out_path)
+    # print("file",out_path)
 # def generate_json(payload):
     
 if __name__ == "__main__":

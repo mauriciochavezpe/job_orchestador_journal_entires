@@ -4,7 +4,7 @@ from .cache_accounts import TTLCache
 class AccountsRepo:
     def __init__(self, sl: ServiceLayerClient, ttl_seconds=3600, max_items=20000):
         self.sl = sl
-        self.cache = TTLCache(ttl_seconds, max_items)
+        self.cache = TTLCache(ttl_seconds, max_items )
 
     def exists(self, code: str) -> bool:
         if not code: return False

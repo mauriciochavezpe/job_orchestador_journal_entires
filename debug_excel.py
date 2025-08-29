@@ -11,8 +11,8 @@ ASSETS_DIR = "assets"
 project_root = Path(__file__).resolve().parent
 file_path = project_root / ASSETS_DIR / FILE_NAME
 
-print(f"Leyendo archivo: {file_path}")
-print(f"Leyendo hoja: {SHEET_NAME}")
+# print(f"Leyendo archivo: {file_path}")
+# print(f"Leyendo hoja: {SHEET_NAME}")
 
 try:
     workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)

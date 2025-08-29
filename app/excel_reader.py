@@ -94,7 +94,7 @@ def read_sheet_in_chunks(
                 continue
             v = row[idx]
             data[key] = _normalize_scalar(v)
-            # print(f"valor item {data[key]}")
+            # print(f"valor {key}:{data[key]}")
 
         if ignore_empty_rows and all(v in (None, '') for v in data.values()):
             continue
