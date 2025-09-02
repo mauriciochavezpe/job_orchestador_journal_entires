@@ -23,8 +23,11 @@ def scheduled_job():
     else:
         logging.info("Tarea omitida (es domingo).")
 
+def doing():
+    print("hola")
+    
 # Programamos la tarea para que se ejecute cada 5 horas
-schedule.every(5).hours.do(scheduled_job)
+schedule.every(5).minutes.do(doing)
 
 logging.info("Scheduler iniciado. El script se está ejecutando...")
 
