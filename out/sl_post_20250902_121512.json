@@ -1,0 +1,121 @@
+{
+  "job": {
+    "started_at": "2025-09-02T12:15:04",
+    "finished_at": "2025-09-02T12:15:12",
+    "duration_sec": 8.183,
+    "rps": 3.0,
+    "concurrency": 1,
+    "dry_run": false
+  },
+  "sources": {
+    "cab_path": "C:\\Users\\proyecto4\\OneDrive - LLAMA GAS S.A\\Documentos\\GitHub\\Jobs_JE\\assets\\ASIENTOS_CONTABLES_CABECERA.xlsx",
+    "det_path": "C:\\Users\\proyecto4\\OneDrive - LLAMA GAS S.A\\Documentos\\GitHub\\Jobs_JE\\assets\\ASIENTOS_CONTABLES_DETALLE.xlsx",
+    "sheet_cab": "CabeceraSaldosBancosFinal",
+    "sheet_det": "DetalleSaldosBancosFinal"
+  },
+  "counts": {
+    "items": 1,
+    "ok": 0,
+    "fail": 1
+  },
+  "results": [
+    {
+      "key": "1",
+      "ok": false,
+      "err": "400 Bad Request: 10000415 - Linked value PLAM does not exist",
+      "payload": {
+        "ReferenceDate": "2025-07-31",
+        "TaxDate": "2025-07-31",
+        "DueDate": "2025-07-31",
+        "Memo": "Saldos de planillas Mes de Julio",
+        "Reference2": "1",
+        "ProjectCode": "",
+        "TransactionCode": "PLAM",
+        "JournalEntryLines": [
+          {
+            "AccountCode": "14110101",
+            "Debit": 0.0,
+            "Credit": 750.0,
+            "LineMemo": "PL-0054500PRLO",
+            "Reference2": "",
+            "ReferenceDate2": "",
+            "ProjectCode": "",
+            "CostingCode": "",
+            "FCCurrency": "USD",
+            "ShortName": "EP0007867170",
+            "Reference1": "PLANILLA MES DE JULIO 2025",
+            "U_INFOPE01": "24865",
+            "U_INFOPE02": "14110000"
+          },
+          {
+            "AccountCode": "14110101",
+            "Debit": 0.0,
+            "Credit": 1000.0,
+            "LineMemo": "PL-0244500PRLO",
+            "Reference2": "",
+            "ReferenceDate2": "",
+            "ProjectCode": "",
+            "CostingCode": "",
+            "FCCurrency": "USD",
+            "ShortName": "EP0007867170",
+            "Reference1": "PLANILLA MES DE JULIO 2025",
+            "U_INFOPE01": "142776",
+            "U_INFOPE02": "14110000"
+          },
+          {
+            "AccountCode": "14110101",
+            "Credit": 0.0,
+            "Debit": 3750.0,
+            "LineMemo": "PL-0094500PRLO",
+            "Reference2": "",
+            "ReferenceDate2": "",
+            "ProjectCode": "",
+            "CostingCode": "",
+            "FCCurrency": "USD",
+            "ShortName": "EP0007867170",
+            "Reference1": "PLANILLA MES DE JULIO 2025",
+            "U_INFOPE01": "618441",
+            "U_INFOPE02": "14110000"
+          },
+          {
+            "AccountCode": "14110101",
+            "Debit": 0.0,
+            "Credit": 2000,
+            "LineMemo": "PL-0024505PRLO",
+            "Reference2": "",
+            "ReferenceDate2": "",
+            "ProjectCode": "",
+            "CostingCode": "",
+            "FCCurrency": "USD",
+            "ShortName": "EP0007867170",
+            "Reference1": "PLANILLA MES DE JULIO 2025",
+            "U_INFOPE01": "648525",
+            "U_INFOPE02": "14110000"
+          }
+      
+        ]
+      },
+      "response": {
+        "status_code": 400,
+        "status_text": "Bad Request",
+        "body": {
+          "error": {
+            "code": -5002,
+            "message": {
+              "lang": "en-us",
+              "value": "10000415 - Linked value PLAM does not exist"
+            }
+          }
+        },
+        "raw": "{\n   \"error\" : {\n      \"code\" : -5002,\n      \"message\" : {\n         \"lang\" : \"en-us\",\n         \"value\" : \"10000415 - Linked value PLAM does not exist\"\n      }\n   }\n}",
+        "http_headers": {
+          "content-id": "1",
+          "content-type": "application/json;charset=utf-8",
+          "content-length": "166",
+          "dataserviceversion": "3.0"
+        },
+        "content_id": "1"
+      }
+    }
+  ]
+}

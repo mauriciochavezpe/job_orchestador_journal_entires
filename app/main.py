@@ -12,6 +12,7 @@ from decimal import Decimal
 from app.modules.SL_B1.sl_client import ServiceLayerClient
 from app.response_json import _dump_json_result
 cfg = Config()
+from .validators import validate_date2
 
 # 1) armar items balanceados
 def collect_items_for_post():
@@ -25,9 +26,9 @@ def collect_items_for_post():
             cab_by_key[key] = {
                 "JdtNum":        c.get("JdtNum") or c.get("jdtnum"),
                 "Memo":          c.get("Memo") or c.get("memo"),
-                "TaxDate":       c.get("TaxDate") or c.get("taxdate"),
-                "ReferenceDate": c.get("ReferenceDate") or c.get("referencedate"),
-                "DueDate":       c.get("DueDate") or c.get("duedate"),
+                "TaxDate":       validate_date2(c.get("TaxDate") or c.get("taxdate"))[1],
+                "ReferenceDate": validate_date2(c.get("ReferenceDate") or c.get("referencedate"))[1],
+                "DueDate":       validate_date2(c.get("DueDate") or c.get("duedate"))[1],
                 "ProjectCode":   c.get("ProjectCode") or c.get("projectcode") or '',
                 "TransactionCode": c.get("TransactionCode") or c.get("transactioncode") or "",
                 "Reference2":    c.get("Reference2") or c.get("reference2") or ''
@@ -46,11 +47,11 @@ def collect_items_for_post():
             if not key: continue
 
             line = {
-                "AccountCode": d.get("AccountCode") or d.get("accountcode"),
+                "AccountCode": str(d.get("AccountCode") or d.get("accountcode")),
                 "LineMemo": d.get("LineMemo") or d.get("linememo") or "",
-                "DueDate": d.get("DueDate") or d.get("duedate") or '',
-                "TaxDate": d.get("TaxDate") or d.get("taxdate") or '',
-                "VatDate": d.get("VatDate") or d.get("vatdate") or '',
+                "DueDate": validate_date2(d.get("DueDate") or d.get("duedate") or '')[1],
+                "TaxDate": validate_date2(d.get("TaxDate") or d.get("taxdate") or '')[1],
+                "VatDate": validate_date2(d.get("VatDate") or d.get("vatdate") or '')[1],
                 "U_INFOPE01": d.get("U_INFOPE01") or d.get("u_infope01") or '',
                 "U_INFOPE02": d.get("U_INFOPE02") or d.get("u_infope02") or '',
                 "ReferenceDate2": d.get("ReferenceDate2") or d.get("referencedate2") or '',
@@ -62,16 +63,14 @@ def collect_items_for_post():
                 "ProjectCode": d.get("ProjectCode") or d.get("projectcode") or '',
                 "Reference1": d.get("Reference1") or d.get("reference1") or '',
             } 
-            line["ShortName"] = d.get("ShortName") or d.get("shortname") or line["AccountCode"]
+            line["ShortName"] = d.get("ShortName") or d.get("shortname") or ''
             # print(f"listDetl {line}")
             groups.setdefault(key, []).append(line)
             s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
             s["d"] += Decimal(str(line["Debit"]))
             s["c"] += Decimal(str(line["Credit"]))
             sums[key] = s
-    # print(f"total {len(batch)}")
 
-    # print(f"total {cab_by_key}")
     # filtrar balanceados
     TOL = Decimal("0.000001")
     items = []
@@ -110,7 +109,7 @@ def post_to_sl():
         sl, repo,
         rps=rps, concurrency=conc,
         local_currency="PEN",
-        dry_run=True,  # ← prueba primero SIN postear
+        dry_run=False,  # ← prueba primero SIN postear
         breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
     )
 
@@ -118,9 +117,7 @@ def post_to_sl():
     started = time.time()
     started_iso = datetime.now().isoformat(timespec="seconds")
     items = collect_items_for_post()  # [{ key, cab, lines }, ...]
-    # print(f"items ")
     res = poster.post_all(items)
-    # print(f"tredsd {res}")
     finished = time.time()
     finished_iso = datetime.now().isoformat(timespec="seconds")
     result_doc = {
@@ -154,6 +151,6 @@ def post_to_sl():
     
 if __name__ == "__main__":
     # primero haz un dry-run
-    print("fasfasd")
+    # print("fasfasd")
     post_to_sl()
     # cuando veas que el payload está bien, cambia a dry_run=False:

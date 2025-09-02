@@ -13,6 +13,7 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     
     sap_lines = []
     for l in lines:
+        # print(l["ShortName"] or l["shortname"])
         out = {
             "AccountCode": l["AccountCode"],
             "Debit":  float(l.get("Debit")  or 0),
@@ -23,7 +24,7 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             'ProjectCode':'',
             'CostingCode':'',
             'FCCurrency':'',
-            "ShortName":  l["ShortName"] or l["shortname"] or l["AccountCode"] 
+            "ShortName": l.get("ShortName",None) or l.get("shortname",None)
         }
         
         for k in ["CostingCode","ProjectCode","Reference2","Reference1","U_INFOPE01","U_INFOPE02","LineNum"]:
@@ -36,5 +37,4 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     
 
     je["JournalEntryLines"] = sap_lines
-    # print(f"P {je}")
     return je

@@ -134,7 +134,17 @@ def _parse_any_date(value: Any, *, format_in: str | None, allow_excel_serial=Tru
             return False, None, 'fecha inválida (mm/dd/yyyy)'
 
     return False, None, 'formato no reconocido'
-
+def validate_date2(value):
+    
+    if(type(value) ==str and len(value)==8):
+        y, m, d = int(value[0:4]), int(value[4:6]), int(value[6:8])
+        try:
+            dt = datetime(y, m, d)
+            return True, f"{y}-{_pad2(m)}-{_pad2(d)}", None
+        except ValueError:
+            return False, None, 'fecha inválida'
+    else:
+        return False,''
 
 def validate_date(value: Any, options: Dict) -> Tuple[bool, Any, List[str]]:
     opts = {

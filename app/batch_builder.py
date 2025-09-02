@@ -6,11 +6,67 @@ from typing import List, Dict, Any, Tuple, Optional
 
 def build_batch_request(requests: list[dict]) -> tuple[str, dict]:
     """
+    Construye un batch OData para SAP B1 Service Layer con un changeset.
+    Cada 'request' debe tener: method, path, body, y opcionalmente content_id.
+    """
+    batch_boundary = f"batch_{uuid.uuid4().hex}"
+    changeset_boundary = f"changeset_{uuid.uuid4().hex}"
+
+    lines: list[str] = []
+    ordered_cids: List[str] = []
+    # Encabezado del batch (outer)
+    lines.append(f"--{batch_boundary}")
+    lines.append(f"Content-Type: multipart/mixed; boundary={changeset_boundary}")
+    lines.append("")  # CRLF en blanco
+
+    # Partes del changeset (inner)
+    for i, req in enumerate(requests, start=1):
+        method = req["method"].upper()
+        path = req["path"]
+        body = req.get("body", None)
+        content_id = req.get("content_id", str(i))
+        
+        ordered_cids.append(content_id)
+        
+        lines.append(f"--{changeset_boundary}")
+        lines.append("Content-Type: application/http")
+        lines.append("Content-Transfer-Encoding: binary")
+        lines.append(f"Content-ID: {content_id}")
+        lines.append("")  # separa headers MIME de la petición HTTP interna
+
+        # Línea de request interna y headers HTTP internos
+        # Ojo: incluir HTTP/1.1; el path puede ser relativo (/b1s/v2/JournalEntries)
+        lines.append(f"{method} {path} HTTP/1.1")
+        lines.append("Accept: application/json")
+
+        if method in ("POST", "PUT", "PATCH", "MERGE"):
+            lines.append("Content-Type: application/json")
+            lines.append("Prefer: return=representation")
+            lines.append("")  # fin de headers HTTP internos
+            # Cuerpo JSON
+            lines.append(json.dumps(body, ensure_ascii=False))
+        else:
+            # GET/DELETE sin cuerpo
+            lines.append("")  # fin de headers HTTP internos
+
+    # Cierre del changeset y del batch
+    lines.append(f"--{changeset_boundary}--")
+    lines.append(f"--{batch_boundary}--")
+
+    body = "\r\n".join(lines) + "\r\n"
+    headers = {
+        "Content-Type": f"multipart/mixed; boundary={batch_boundary}"
+    }
+    return body, headers,ordered_cids
+
+def build_batch_request_older(requests: list[dict]) -> tuple[str, dict]:
+    """
     Builds a multipart/mixed batch request body and headers.
     Each request in the list should be a dict with 'method', 'path', and 'body'.
     """
     batch_id = f"batch_{uuid.uuid4()}"
     boundary = f"batch_{uuid.uuid4()}"
+    # print(f"body: {batch_id}")
     
     parts = []
     for req in requests:
@@ -19,6 +75,7 @@ def build_batch_request(requests: list[dict]) -> tuple[str, dict]:
         part += "Content-Transfer-Encoding: binary\r\n\r\n"
         part += f"{req['method']} {req['path']}\r\n"
         part += "Content-Type: application/json\r\n\r\n"
+        part += "Prefer: return=representation\r\n\r\n"
         part += json.dumps(req['body'])
         parts.append(part)
 
@@ -28,7 +85,6 @@ def build_batch_request(requests: list[dict]) -> tuple[str, dict]:
     headers = {
         "Content-Type": f"multipart/mixed; boundary={boundary}"
     }
-    # print(f"body: {body}")
     return body, headers
 
 def parse_batch_response(response_text: str, boundary: str) -> List[Dict[str, Any]]:
