@@ -8,20 +8,28 @@ from typing import Any, Dict, List, Optional
 import json
 
 class CircuitBreaker:
-    def __init__(self, *, enabled=True, fail_threshold=8, cool_down_sec=30):
+    """
+    Controla el estado de la comunicación con SAP. Si el número de errores
+    seguidos supera el umbral, el circuito se "abre" y bloquea cualquier envío
+    posterior durante un periodo de enfriamiento (cool_down).
+    """
+    def __init__(self, *, enabled: bool = True, fail_threshold: int = 8, cool_down_sec: int = 30):
         self.enabled = enabled
         self.fail_threshold = fail_threshold
         self.cool_down_sec = cool_down_sec
         self._fails = 0
         self._open_until = 0.0
 
-    def check(self): ## is open ?
+    def check(self) -> bool:
+        """Indica si el circuito está abierto (bloqueando peticiones)."""
         return self.enabled and time.time() < self._open_until
 
     def on_success(self):
+        """Reinicia el contador de errores tras un éxito."""
         self._fails = 0
 
-    def on_fail(self):
+    def on_fail(self) -> bool:
+        """Registra un fallo y abre el circuito si se alcanza el límite."""
         if not self.enabled: return False
         self._fails += 1
         if self._fails >= self.fail_threshold:
@@ -132,35 +140,66 @@ class JournalPoster:
     
     
 
-    def post_all(self, items: list[dict], build_fn=None):
+    def post_all(self, items: list[dict], build_fn=None, chunk_size: int = 20):
+        """
+        Orquesta el envío de todos los asientos contables, dividiéndolos en
+        sub-lotes (chunks) para evitar saturar el Service Layer o exceder
+        el límite de tiempo de respuesta.
+
+        Args:
+            items: Lista de diccionarios con la data de cada asiento.
+            build_fn: Función constructora de JSON opcional.
+            chunk_size: Tamaño de cada lote (default 20).
+        """
         if self.breaker.check():
             raise RuntimeError("Circuit breaker abierto; en enfriamiento.")
 
+        total_results = {"ok": 0, "fail": 0, "results": []}
+        
+        # Segmentación de la carga total
+        for i in range(0, len(items), chunk_size):
+            chunk = items[i : i + chunk_size]
+            print(f"-> Procesando lote {i//chunk_size + 1} ({len(chunk)} registros de {len(items)})...")
+            
+            chunk_res = self._post_batch_chunk(chunk, build_fn)
+            
+            # Acumulación de métricas
+            total_results["ok"] += chunk_res["ok"]
+            total_results["fail"] += chunk_res["fail"]
+            total_results["results"].extend(chunk_res["results"])
+            
+            # Verificación del breaker después de cada lote
+            if self.breaker.check():
+                print(f"[ERROR] Circuit Breaker activado. Abortando el resto de lotes.")
+                break
+                
+        return total_results
+
+    def _post_batch_chunk(self, items: list[dict], build_fn=None):
+        """
+        Realiza el envío físico de un paquete $batch a SAP.
+        Construye la petición multipart, la envía y parsea la respuesta.
+        """
         results: list[dict] = []
         valid_requests: list[dict] = []
         items_by_cid: dict[str, dict] = {}
-        # ordered_cids: list[str] = []
 
-        # 1) Preparar solicitudes (1 doc = 1 subrequest)
+        # 1) Preparar solicitudes
         for i, it in enumerate(items):
             payload = (build_fn or build_journal_entry)(it["cab"], it["lines"], local_currency=self.local_currency)
-            content_id = str(it.get("key") or i)  # usa tu key si es única
+            content_id = str(it.get("key") or i)
             valid_requests.append({
                 "method": "POST",
                 "path": "/b1s/v1/JournalEntries",
                 "body": payload,
-                "content_id": content_id,  # <-- que build_batch_request ponga este Content-ID
+                "content_id": content_id,
             })
-            # items_by_cid[content_id] = {"item": it, "payload": payload}
-            # items_by_cid.append({"cid": content_id, "item": it, "payload": payload})
-            # ordered_cids.append(content_id)
             items_by_cid[content_id] = {"item": it, "payload": payload}
 
         if not valid_requests:
             return {"ok": 0, "fail": 0, "results": results}
         
-        
-        # 2) Dry-run: sólo vista previa
+        # 2) Dry-run
         if self.dry_run:
             for cid, info in items_by_cid.items():
                 it = info["item"]
@@ -172,8 +211,7 @@ class JournalPoster:
             return {"ok": len(results), "fail": 0, "results": results}
 
         # 3) Construir y enviar el $batch real
-        batch_body, batch_headers,ordered_cids = build_batch_request(valid_requests)
-        
+        batch_body, batch_headers, ordered_cids = build_batch_request(valid_requests)
         
         try:
             def call():
@@ -184,17 +222,16 @@ class JournalPoster:
                     self.limiter.release()
 
             raw_res = with_retry(call, retries=5, base_ms=500, max_ms=30_000)
-            # print(f"raw_res {raw_res}")
-            
             self.breaker.on_success()
         except Exception as e:
             self.breaker.on_fail()
             for cid in ordered_cids:
                 it = items_by_cid[cid]["item"]
-                results.append({"key": it["key"],
-                                "ok": False, "err": f"Fallo en lote completo: {e}",
-                                "payload": items_by_cid[cid]["payload"]
-                                })
+                results.append({
+                    "key": it["key"],
+                    "ok": False, "err": f"Fallo en lote completo: {e}",
+                    "payload": items_by_cid[cid]["payload"]
+                })
             return {"ok": 0, "fail": len(ordered_cids), "results": results}
 
         # 4) Interpretar respuesta batch
@@ -205,14 +242,17 @@ class JournalPoster:
         if not boundary:
             for cid in ordered_cids:
                 it = items_by_cid[cid]["item"]
-                results.append({"key": it["key"], "ok": False, "err": "No se pudo encontrar el boundary en la respuesta del lote", "payload": items_by_cid[cid]["payload"]})
+                results.append({
+                    "key": it["key"], "ok": False, 
+                    "err": "No se pudo encontrar el boundary en la respuesta del lote", 
+                    "payload": items_by_cid[cid]["payload"]
+                })
             return {"ok": 0, "fail": len(ordered_cids), "results": results}
 
         parts = parse_batch_response(raw_res.text, boundary)
 
         # ---------------------------------------------------------------------
-        # 1) Indexar por Content-ID para poder mapear cada respuesta a su request
-        #    Además, armamos una cola "secuencial" para partes sin Content-ID.
+        # 1) Indexar por Content-ID
         # ---------------------------------------------------------------------
         by_cid: Dict[Optional[str], Dict[str, Any]] = {
             p.get("content_id"): p for p in parts if p.get("content_id")
@@ -220,39 +260,23 @@ class JournalPoster:
         
         seq_parts: List[Dict[str, Any]] = [p for p in parts if not p.get("content_id")]
         seq_idx = 0
-        # print(f"raw_res {parts}")
 
         def _extract_err_msg(part: Dict[str, Any]) -> str:
-            """
-            Devuelve un mensaje de error legible desde la parte del batch.
-            Prioriza el formato típico de SAP B1 SL:
-            {"error":{"code":"...","message":{"value":"..."}}}
-            Si no existe, devuelve el body serializado o el raw_body.
-            """
             body = part.get("body")
             raw = part.get("raw_body")
             try:
-                # Caso 1: body ya es dict
                 if isinstance(body, dict):
                     msg = ((body.get("error") or {}).get("message") or {}).get("value")
-                    if msg:
-                        return str(msg)
+                    if msg: return str(msg)
                     return json.dumps(body, ensure_ascii=False)
-                # Caso 2: body no es dict ⇒ intentar parsear raw_body
                 if raw:
                     obj = json.loads(raw)
                     msg = ((obj.get("error") or {}).get("message") or {}).get("value")
                     return str(msg or raw)
-            except Exception:
-                # Si algo falla, devolvemos lo disponible
-                pass
+            except Exception: pass
             return raw or "Error desconocido"
         
         def _build_per_item_response(part: Dict[str, Any]) -> Dict[str, Any]:
-            """
-            Arma un objeto de respuesta homogéneo por ítem del batch.
-            Incluye status, body (parseado), raw (texto crudo), y headers HTTP de la subrespuesta.
-            """
             return {
                 "status_code": int(part.get("status_code") or 0),
                 "status_text": part.get("status_text") or "",
@@ -263,22 +287,19 @@ class JournalPoster:
             }
         
         # ---------------------------------------------------------------------
-        # 2) Recorrer los content_ids en el mismo orden en que armamos el batch
-        #    y producir un resultado por cada ítem.
+        # 2) Recorrer los content_ids originales
         # ---------------------------------------------------------------------
         for cid in ordered_cids:
             item_info = items_by_cid[cid]
-            it = item_info["item"]        # tu objeto original con .["key"]
-            payload = item_info["payload"]  # el JSON enviado en ese sub-request
+            it = item_info["item"]
+            payload = item_info["payload"]
 
-            # Buscar su parte por Content-ID; si no hay, consumir una parte secuencial.
             part = by_cid.get(cid)
             if part is None and seq_idx < len(seq_parts):
                 part = seq_parts[seq_idx]
                 seq_idx += 1
 
             if part is None:
-                # No hubo subrespuesta correspondiente
                 results.append({
                     "key": it["key"],
                     "ok": False,
@@ -289,7 +310,6 @@ class JournalPoster:
                 self.breaker.on_fail()
                 continue
 
-            # Normalizar la subrespuesta y decidir OK/Fail
             sc = int(part.get("status_code") or 0)
             per_item_resp = _build_per_item_response(part)
             is_ok = 200 <= sc < 300
@@ -303,7 +323,6 @@ class JournalPoster:
                 })
             else:
                 err_msg = _extract_err_msg(part)
-                print(f"{per_item_resp['status_code']} dd{per_item_resp['status_text']}: cc{err_msg}")
                 results.append({
                     "key": it["key"],
                     "ok": False,
@@ -313,10 +332,6 @@ class JournalPoster:
                 })
                 self.breaker.on_fail()
 
-        # ---------------------------------------------------------------------
-        # 3) Si el servidor devolvió menos partes de las que enviamos, ya quedaron
-        #    marcadas arriba. Contabilizamos resultados y retornamos.
-        # ---------------------------------------------------------------------
         ok_count = sum(1 for r in results if r["ok"])
         fail_count = sum(1 for r in results if not r["ok"])
         return {"ok": ok_count, "fail": fail_count, "results": results}

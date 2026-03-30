@@ -1,0 +1,23 @@
+{
+  "job": {
+    "started_at": "2026-03-24T19:39:30",
+    "finished_at": "2026-03-24T19:39:30",
+    "duration_sec": 0.495,
+    "rps": 3.0,
+    "concurrency": 1,
+    "dry_run": false,
+    "chunk_size": 500
+  },
+  "sources": {
+    "cab_path": "C:\\Users\\proyecto4\\OneDrive - LLAMA GAS S.A\\Documentos\\GitHub\\Jobs_JE\\assets\\ASIENTOS_CONTABLES_CABECERA3.xlsx",
+    "det_path": "C:\\Users\\proyecto4\\OneDrive - LLAMA GAS S.A\\Documentos\\GitHub\\Jobs_JE\\assets\\ASIENTOS_CONTABLES_DETALLE3.xlsx",
+    "sheet_cab": "CabeceraSaldosBancosFinal",
+    "sheet_det": "DetalleSaldosBancosFinal"
+  },
+  "counts": {
+    "items_procesados": 0,
+    "exitosos": 0,
+    "fallidos": 0
+  },
+  "results": []
+}

@@ -1,22 +1,41 @@
-# app/main.py (fragmento)
+"""
+app/main.py
+Módulo principal para la ejecución del orquestador de Asientos Contables.
+Este script se encarga de leer los archivos Excel, agrupar las cabeceras con sus
+detalles, validar el balanceo contable y enviar los datos a SAP Business One.
+"""
+
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import datetime
+from decimal import Decimal
+import os
+import time
+
+# Configuración de rutas y variables de entorno
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
-from datetime import datetime
+
 from app.config import Config
 from app.excel_reader import read_sheet_in_chunks
 from app.accounts_repo import AccountsRepo
 from app.poster import JournalPoster, CircuitBreaker
-from decimal import Decimal
 from app.modules.SL_B1.sl_client import ServiceLayerClient
 from app.response_json import _dump_json_result
-cfg = Config()
 from .validators import validate_date2
 
-# 1) armar items balanceados
+cfg = Config()
+
 def collect_items_for_post():
-    # indexa CAB por JdtNum (ajusta si tu llave es otra)
+    """
+    Lee los archivos Excel de Cabecera y Detalle, los correlaciona mediante una llave
+    común (jdtnum) y filtra solo aquellos asientos que están contablemente balanceados 
+    (Suma Débito = Suma Crédito).
+    
+    Returns:
+        list: Una lista de diccionarios, cada uno con los datos de un asiento completo.
+    """
+    # 1) Indexar CABECERAS por JdtNum para búsqueda rápida
     cab_by_key = {}
     for batch in read_sheet_in_chunks(cfg.cab_path, sheet_name=cfg.sheet_cab, chunk_size=1000, skip_rows=cfg.skip_rows, header_row=1):
         for it in batch:
@@ -34,14 +53,11 @@ def collect_items_for_post():
                 "Reference2":    c.get("Reference2") or c.get("reference2") or ''
             }
 
+    # 2) Agrupar DETALLES por ParentKey
     groups = {}
     sums = {}
-    index2= 0
-    # retorna lote de informacion de {chunk_size}
     for batch in read_sheet_in_chunks(cfg.det_path, sheet_name=cfg.sheet_det, chunk_size=100, skip_rows=cfg.skip_rows, header_row=1):
         for it in batch:
-            index2 +=1
-            # print(f" datos del btch {it}")
             d = it["data"]
             key = str(d.get("parentkey") or d.get("ParentKey") or "")
             if not key: continue
@@ -62,35 +78,37 @@ def collect_items_for_post():
                 "CostingCode": d.get("CostingCode") or d.get("costingcode") or '',
                 "ProjectCode": d.get("ProjectCode") or d.get("projectcode") or '',
                 "Reference1": d.get("Reference1") or d.get("reference1") or '',
+                "ShortName": d.get("ShortName") or d.get("shortname") or ''
             } 
-            line["ShortName"] = d.get("ShortName") or d.get("shortname") or ''
-            # print(f"listDetl {line}")
+            
             groups.setdefault(key, []).append(line)
             s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
             s["d"] += Decimal(str(line["Debit"]))
             s["c"] += Decimal(str(line["Credit"]))
             sums[key] = s
 
-    # filtrar balanceados
+    # 3) Filtrar solo asientos balanceados y con cabecera existente
     TOL = Decimal("0.000001")
     items = []
     for key, lines in groups.items():
         s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
-        print(f"d: {s['d']} | c: {s['c']}")
         if abs(s["d"] - s["c"]) <= TOL:
             cab = cab_by_key.get(key)
             if cab:
                 items.append({"key": key, "cab": cab, "lines": lines})
             else:
-                print(f"[WARN] sin CAB para {key}, se omite")
+                print(f"[WARN] Sin cabecera (CAB) para la llave {key}, se omite.")
         else:
-            print(f"[SKIP] {key} no balanceado d={s['d']} c={s['c']}")
-    # print(f"items {cab_by_key}")
+            print(f"[SKIP] Asiento {key} no balanceado (D={s['d']}, C={s['c']}).")
+            
     return items
 
-# 2) postear (empieza en dry_run=True)
 def post_to_sl():
-    import os, time
+    """
+    Función principal que orquestra la conexión a SAP Service Layer,
+    inicializa el poster y ejecuta la carga de datos.
+    """
+    # Inicialización del cliente SAP Service Layer
     sl = ServiceLayerClient(
         base_url=os.getenv("SL_BASE_URL"),
         company_db=os.getenv("CompanyDB"),
@@ -98,28 +116,35 @@ def post_to_sl():
         password=os.getenv("Password"),
         timeout=30_000,
     )
+    
+    # Repositorio de cuentas con caché
     repo = AccountsRepo(sl, ttl_seconds=3600, max_items=20000)
-    repo.cache.clear() # <--- Limpiar cache al iniciar
-    # repo.preload_all()  # opcional
+    repo.cache.clear() 
 
     rps = float(os.getenv("SL_RPS", "3"))
     conc = int(os.getenv("SL_CONCURRENCY", "1"))
+    chunk_size = int(os.getenv("CHUNK_SIZE", "20"))
 
+    # Configuración del póster con Circuit Breaker
     poster = JournalPoster(
         sl, repo,
         rps=rps, concurrency=conc,
         local_currency="PEN",
-        dry_run=False,  # ← prueba primero SIN postear
+        dry_run=False,
         breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
     )
 
-    # ▶ Construye asientos listos para postear
     started = time.time()
     started_iso = datetime.now().isoformat(timespec="seconds")
-    items = collect_items_for_post()  # [{ key, cab, lines }, ...]
-    res = poster.post_all(items)
+    
+    # Recolección y envío
+    items = collect_items_for_post()
+    res = poster.post_all(items, chunk_size=chunk_size)
+    
     finished = time.time()
     finished_iso = datetime.now().isoformat(timespec="seconds")
+    
+    # Generación de reporte final
     result_doc = {
         "job": {
             "started_at": started_iso,
@@ -128,7 +153,7 @@ def post_to_sl():
             "rps": rps,
             "concurrency": conc,
             "dry_run": poster.dry_run,
-            # "local_currency": "PEN",
+            "chunk_size": chunk_size
         },
         "sources": {
             "cab_path": str(cfg.cab_path),
@@ -137,20 +162,15 @@ def post_to_sl():
             "sheet_det": cfg.sheet_det,
         },
         "counts": {
-            "items": len(items),
-            "ok": res["ok"],
-            "fail": res["fail"],
+            "items_procesados": len(items),
+            "exitosos": res["ok"],
+            "fallidos": res["fail"],
         },
-        "results": res["results"],  # [{key, ok, res|err, payload}, ...]
+        "results": res["results"],
     }
     
-    # project_root = Path(__file__).resolve().parent.parent
-    out_path =    _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
-    # print("file",out_path)
-# def generate_json(payload):
-    
+    _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
+    print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+
 if __name__ == "__main__":
-    # primero haz un dry-run
-    # print("fasfasd")
     post_to_sl()
-    # cuando veas que el payload está bien, cambia a dry_run=False:
