@@ -172,5 +172,135 @@ def post_to_sl():
     _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
     print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
 
+
+def process_payload_for_post(payload: list) -> list:
+    """
+    Procesa un payload JSON (lista de diccionarios planos) enviado desde el frontend.
+    Cada diccionario contiene información de Cabecera y Detalle.
+    """
+    cab_by_key = {}
+    groups = {}
+    sums = {}
+
+    for row in payload:
+        # Extraer llave común
+        key = str(row.get("jdtnum") or row.get("JdtNum") or row.get("parentkey") or row.get("ParentKey") or "")
+        if not key: continue
+
+        # Extraer cabecera asumiendo que viene en cada fila o en la primera
+        if key not in cab_by_key:
+            cab_by_key[key] = {
+                "JdtNum": row.get("JdtNum") or row.get("jdtnum") or key,
+                "Memo": row.get("MemoCab") or row.get("Memo") or row.get("memo") or "",
+                "TaxDate": validate_date2(row.get("TaxDateCab") or row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
+                "ReferenceDate": validate_date2(row.get("ReferenceDateCab") or row.get("ReferenceDate") or row.get("referencedate") or getattr(row, 'referencedate', ''))[1],
+                "DueDate": validate_date2(row.get("DueDateCab") or row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
+                "ProjectCode": row.get("ProjectCodeCab") or row.get("projectcodecab") or row.get("ProjectCode") or row.get("projectcode") or '',
+                "TransactionCode": row.get("TransactionCode") or row.get("transactioncode") or "",
+                "Reference2": row.get("Reference2Cab") or row.get("reference2cab") or row.get("Reference2") or row.get("reference2") or ''
+            }
+
+        # Extraer línea de detalle
+        acc = str(row.get("AccountCode") or row.get("accountcode") or "")
+        if acc:
+            line = {
+                "AccountCode": acc,
+                "LineMemo": row.get("LineMemo") or row.get("linememo") or "",
+                "DueDate": validate_date2(row.get("DueDateLine") or row.get("duedateline") or row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
+                "TaxDate": validate_date2(row.get("TaxDateLine") or row.get("taxdateline") or row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
+                "VatDate": validate_date2(row.get("VatDate") or row.get("vatdate") or getattr(row, 'vatdate', ''))[1],
+                "U_INFOPE01": row.get("U_INFOPE01") or row.get("u_infope01") or '',
+                "U_INFOPE02": row.get("U_INFOPE02") or row.get("u_infope02") or '',
+                "ReferenceDate2": row.get("ReferenceDate2") or row.get("referencedate2") or '',
+                "FCCurrency": row.get("FCCurrency") or row.get("fccurrency") or '',
+                "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
+                "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
+                "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
+                "CostingCode": row.get("CostingCode") or row.get("costingcode") or '',
+                "ProjectCode": row.get("ProjectCodeLine") or row.get("projectcodeline") or row.get("ProjectCode") or row.get("projectcode") or '',
+                "Reference1": row.get("Reference1") or row.get("reference1") or '',
+                "ShortName": row.get("ShortName") or row.get("shortname") or ''
+            }
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(line)
+            s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
+            s["d"] += Decimal(str(line["Debit"]))
+            s["c"] += Decimal(str(line["Credit"]))
+            sums[key] = s
+
+    # Filtrar solo balanceados
+    TOL = Decimal("0.000001")
+    items = []
+    for key, lines in groups.items():
+        s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
+        if abs(s["d"] - s["c"]) <= TOL:
+            cab = cab_by_key.get(key)
+            items.append({"key": key, "cab": cab, "lines": lines})
+        else:
+            print(f"[SKIP] Asiento {key} no balanceado (D={s['d']}, C={s['c']}).")
+
+    return items
+
+
+def post_payload_to_sl(payload: list) -> dict:
+    """
+    Procesa un payload JSON plano enviado por REST API y lo envía al Service Layer.
+    """
+    sl = ServiceLayerClient(
+        base_url=os.getenv("SL_BASE_URL"),
+        company_db=os.getenv("CompanyDB"),
+        user_name=os.getenv("user_name"),
+        password=os.getenv("Password"),
+        timeout=30_000,
+    )
+    
+    repo = AccountsRepo(sl, ttl_seconds=3600, max_items=20000)
+    repo.cache.clear() 
+
+    rps = float(os.getenv("SL_RPS", "3"))
+    conc = int(os.getenv("SL_CONCURRENCY", "1"))
+    chunk_size = int(os.getenv("CHUNK_SIZE", "20"))
+
+    poster = JournalPoster(
+        sl, repo,
+        rps=rps, concurrency=conc,
+        local_currency="PEN",
+        dry_run=False,
+        breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
+    )
+
+    started = time.time()
+    started_iso = datetime.now().isoformat(timespec="seconds")
+    
+    items = process_payload_for_post(payload)
+    res = poster.post_all(items, chunk_size=chunk_size)
+    
+    finished = time.time()
+    finished_iso = datetime.now().isoformat(timespec="seconds")
+    
+    result_doc = {
+        "job": {
+            "started_at": started_iso,
+            "finished_at": finished_iso,
+            "duration_sec": round(finished - started, 3),
+            "rps": rps,
+            "concurrency": conc,
+            "dry_run": poster.dry_run,
+            "chunk_size": chunk_size
+        },
+        "counts": {
+            "items_procesados": len(items),
+            "exitosos": res["ok"],
+            "fallidos": res["fail"],
+        },
+        "results": res["results"],
+    }
+    
+    _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
+    print(f"-> API Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+    
+    return result_doc
+
 if __name__ == "__main__":
     post_to_sl()
