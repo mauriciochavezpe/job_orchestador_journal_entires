@@ -22,7 +22,7 @@ from app.accounts_repo import AccountsRepo
 from app.poster import JournalPoster, CircuitBreaker
 from app.modules.SL_B1.sl_client import ServiceLayerClient
 from app.response_json import _dump_json_result
-from .validators import validate_date2
+from app.validators import validate_date2
 
 cfg = Config()
 
@@ -75,7 +75,11 @@ def collect_items_for_post():
                 "Debit":  float(d.get("Debit")  or d.get("debit")  or 0.0) ,
                 "Credit": float(d.get("Credit") or d.get("credit") or 0.0) ,
                 "Reference2": d.get("Reference2") or d.get("reference2") or '',
-                "CostingCode": d.get("CostingCode") or d.get("costingcode") or '',
+                "OcrCode1":  d.get("OcrCode1") or '',
+                "OcrCode2":  d.get("OcrCode2") or '',
+                "OcrCode3":  d.get("OcrCode3") or '',
+                "OcrCode4":  d.get("OcrCode4") or '',
+                "OcrCode5":  d.get("OcrCode5") or '',
                 "ProjectCode": d.get("ProjectCode") or d.get("projectcode") or '',
                 "Reference1": d.get("Reference1") or d.get("reference1") or '',
                 "ShortName": d.get("ShortName") or d.get("shortname") or ''
@@ -130,7 +134,7 @@ def post_to_sl():
         sl, repo,
         rps=rps, concurrency=conc,
         local_currency="PEN",
-        dry_run=False,
+        dry_run=True,
         breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
     )
 
@@ -173,16 +177,57 @@ def post_to_sl():
     print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
 
 
-def process_payload_for_post(payload: list) -> list:
+def process_payload_for_post(payload: list, sl=None) -> list:
     """
     Procesa un payload JSON (lista de diccionarios planos) enviado desde el frontend.
     Cada diccionario contiene información de Cabecera y Detalle.
+    Si se pasa `sl` (ServiceLayerClient), se consulta OHEM para enriquecer
+    cada línea con U_RML_CECO1-4 y EmployeeID desde el empleado asociado al CardCode.
     """
     cab_by_key = {}
     groups = {}
     sums = {}
+    # Caché de OHEM por CardCode para no repetir el SELECT
+    ohem_cache: dict = {}
 
     for row in payload:
+        # ── Enriquecer con datos OHEM (solo si ShortName existe) ──────────────
+        if sl is not None:
+            card_code = row.get("ShortName") or ""
+            if card_code:  # ShortName no es obligatorio; si no hay, se omite el lookup
+                if card_code not in ohem_cache:
+                    try:
+                        # Usar el schema de la configuración o el hardcoded como fallback
+                        db_schema = getattr(sl, 'db_schema', None) or "LLAMA_GAS_0326"
+                        
+                        sql = (
+                            f"SELECT H1.\"U_CE_PVAS\", H1.\"U_RML_CECO1\", H1.\"U_RML_CECO2\","
+                            f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"Code\""
+                            f" FROM \"{db_schema}\".\"OCRD\" O"
+                            f" INNER JOIN \"{db_schema}\".\"OHEM\" H1"
+                            f" ON O.\"LicTradNum\"=H1.\"U_CE_PVAS\""
+                            f" WHERE O.\"CardCode\"='{card_code}'"
+                        )
+                        print(f"[DEBUG SQL] Consultando OHEM para: {card_code} en schema: {db_schema}")
+                        
+                        rows_ohem = sl.query_sql(sql)
+                        ohem_cache[card_code] = rows_ohem[0] if rows_ohem else {}
+                        if not rows_ohem:
+                            print(f"[OHEM] No se encontró información para CardCode={card_code}")
+                        else:
+                            print(f"[OHEM] CardCode={card_code} -> {ohem_cache[card_code]}")
+                    except Exception as e:
+                        print(f"[WARN] OHEM lookup falló para {card_code}: {e}")
+                        ohem_cache[card_code] = {}
+                # Inyectar OcrCode* solo si OHEM retornó valor y el row no los trae
+                ohem = ohem_cache.get(card_code, {})
+                for i in range(1, 5):
+                    ceco_key = f"U_RML_CECO{i}"
+                    jdl = f"OcrCode{i}"
+                    if ohem.get(ceco_key) and not row.get(jdl):
+                        row[jdl] = ohem[ceco_key]
+        # ─────────────────────────────────────────────────────────────────────────
+
         # Extraer llave común
         key = str(row.get("jdtnum") or row.get("JdtNum") or row.get("parentkey") or row.get("ParentKey") or "")
         if not key: continue
@@ -195,9 +240,9 @@ def process_payload_for_post(payload: list) -> list:
                 "TaxDate": validate_date2(row.get("TaxDateCab") or row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
                 "ReferenceDate": validate_date2(row.get("ReferenceDateCab") or row.get("ReferenceDate") or row.get("referencedate") or getattr(row, 'referencedate', ''))[1],
                 "DueDate": validate_date2(row.get("DueDateCab") or row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
-                "ProjectCode": row.get("ProjectCodeCab") or row.get("projectcodecab") or row.get("ProjectCode") or row.get("projectcode") or '',
+                #"ProjectCode": row.get("ProjectCodeCab") or row.get("projectcodecab") or row.get("ProjectCode") or row.get("projectcode") or '',
                 "TransactionCode": row.get("TransactionCode") or row.get("transactioncode") or "",
-                "Reference2": row.get("Reference2Cab") or row.get("reference2cab") or row.get("Reference2") or row.get("reference2") or ''
+                #"Reference2": row.get("Reference2Cab") or row.get("reference2cab") or row.get("Reference2") or row.get("reference2") or ''
             }
 
         # Extraer línea de detalle
@@ -205,22 +250,31 @@ def process_payload_for_post(payload: list) -> list:
         if acc:
             line = {
                 "AccountCode": acc,
+                #"LineNum": row.get("LineNum") or row.get("linenum") or '',
                 "LineMemo": row.get("LineMemo") or row.get("linememo") or "",
-                "DueDate": validate_date2(row.get("DueDateLine") or row.get("duedateline") or row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
-                "TaxDate": validate_date2(row.get("TaxDateLine") or row.get("taxdateline") or row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
+                "DueDate": validate_date2(row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
+                "TaxDate": validate_date2(row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
                 "VatDate": validate_date2(row.get("VatDate") or row.get("vatdate") or getattr(row, 'vatdate', ''))[1],
                 "U_INFOPE01": row.get("U_INFOPE01") or row.get("u_infope01") or '',
                 "U_INFOPE02": row.get("U_INFOPE02") or row.get("u_infope02") or '',
-                "ReferenceDate2": row.get("ReferenceDate2") or row.get("referencedate2") or '',
+                "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or '',
                 "FCCurrency": row.get("FCCurrency") or row.get("fccurrency") or '',
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
-                "CostingCode": row.get("CostingCode") or row.get("costingcode") or '',
-                "ProjectCode": row.get("ProjectCodeLine") or row.get("projectcodeline") or row.get("ProjectCode") or row.get("projectcode") or '',
-                "Reference1": row.get("Reference1") or row.get("reference1") or '',
-                "ShortName": row.get("ShortName") or row.get("shortname") or ''
             }
+            # Campos opcionales: solo se agregan si tienen valor
+            for i in range(1, 6):
+                val = row.get(f"OcrCode{i}")
+                if val: line[f"OcrCode{i}"] = val
+            if row.get("ShortName") or row.get("shortname"):
+                line["ShortName"] = row.get("ShortName") or row.get("shortname")
+            if row.get("ProjectCode") or row.get("projectcode"):
+                line["ProjectCode"] = row.get("ProjectCode") or row.get("projectcode")
+            if row.get("Reference1") or row.get("reference1"):
+                line["Reference1"] = row.get("Reference1") or row.get("reference1")
+            if row.get("EmployeeID") or row.get("employeeid"):
+                line["EmployeeID"] = row.get("EmployeeID") or row.get("employeeid")
             if key not in groups:
                 groups[key] = []
             groups[key].append(line)
@@ -273,7 +327,7 @@ def post_payload_to_sl(payload: list) -> dict:
     started = time.time()
     started_iso = datetime.now().isoformat(timespec="seconds")
     
-    items = process_payload_for_post(payload)
+    items = process_payload_for_post(payload, sl=sl)
     res = poster.post_all(items, chunk_size=chunk_size)
     
     finished = time.time()

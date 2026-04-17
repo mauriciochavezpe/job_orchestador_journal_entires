@@ -26,8 +26,8 @@ def scheduled_job():
 def doing():
     print("hola")
     
-# Programamos la tarea para que se ejecute cada 5 horas
-schedule.every(5).minutes.do(doing)
+# Programamos la tarea para que se ejecute cada 5 minutos
+schedule.every(5).minutes.do(scheduled_job)
 
 logging.info("Scheduler iniciado. El script se está ejecutando...")
 

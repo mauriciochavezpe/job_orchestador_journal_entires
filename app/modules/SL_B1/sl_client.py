@@ -1,5 +1,15 @@
-from __future__ import annotations
 import requests
+import urllib3
+import os
+import logging
+try:
+    from hdbcli import dbapi
+    HDB_AVAILABLE = True
+except ImportError:
+    HDB_AVAILABLE = False
+
+# Deshabilitar advertencias de SSL inseguro (necesario cuando verify=False)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from typing import Any, Optional
 
 class SLAuthError(Exception): ...
@@ -23,7 +33,17 @@ class ServiceLayerClient:
         self.password = password
         self.timeout = timeout / 1000.0  # seconds
         self.s = requests.Session()
+        self.s.verify = False  # Ignorar validación de certificados SSL
         self.cookie: Optional[str] = None
+        
+        # Datos para conexión directa a DB (opcional)
+        self.db_conn = None
+        self.db_host = os.getenv("DB_HOST")
+        self.db_port = os.getenv("DB_PORT")
+        self.db_user = os.getenv("DB_USER")
+        self.db_pass = os.getenv("DB_PASS")
+        self.db_schema = os.getenv("DB_SCHEMA")
+        self.db_database = os.getenv("DB_HANA")
 
     def _url(self, path: str) -> str:
         # print(f"{self.base_url}{path}")
@@ -36,7 +56,7 @@ class ServiceLayerClient:
             "CompanyDB": self.company_db,
             "UserName": self.user_name,
             "Password": self.password
-        }, timeout=self.timeout)
+        }, timeout=self.timeout, verify=False)
         if r.status_code != 200:
             raise SLAuthError(f"Login failed: {r.status_code} {r.text}")
         ck = r.headers.get("Set-Cookie")
@@ -54,11 +74,11 @@ class ServiceLayerClient:
         if self.cookie: hdrs["Cookie"] = self.cookie
         if headers: hdrs.update(headers)
 
-        r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout)
+        r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout, verify=False)
         if r.status_code == 401:  # sesión vencida → relogin y reintenta 1 vez
             self.login()
             hdrs["Cookie"] = self.cookie or ""
-            r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout)
+            r = self.s.request(method, self._url(path), json=json, data=data, params=params, headers=hdrs, timeout=self.timeout, verify=False)
 
         if r.status_code >= 400:
             try:
@@ -96,3 +116,59 @@ class ServiceLayerClient:
         """POST a batch request. Content-Type must be handled by caller."""
         # print(f"batch: {payload}")
         return self.request("POST", "/$batch", json=payload, headers=headers)
+
+    def _get_db_conn(self):
+        """Inicializa o retorna la conexión actual a la base de datos."""
+        if not HDB_AVAILABLE:
+            logging.error("Librería hdbcli no está instalada.")
+            return None
+        
+        if self.db_conn is None or not self.is_db_connected():
+            try:
+                if not (self.db_host and self.db_user and self.db_pass):
+                    logging.warning("Faltan credenciales de DB en el archivo .env")
+                    return None
+                
+                self.db_conn = dbapi.connect(
+                    address=self.db_host,
+                    port=int(self.db_port or 30015),
+                    user=self.db_user,
+                    password=self.db_pass,
+                    databaseName=self.db_database,
+                    currentSchema=self.db_schema,
+                    encrypt='true',
+                    sslValidateCertificate='false'
+                )
+                logging.info(f"Conexión exitosa a SAP HANA: {self.db_host}")
+            except Exception as e:
+                logging.error(f"Error conectando a la DB: {e}")
+                self.db_conn = None
+        return self.db_conn
+
+    def is_db_connected(self) -> bool:
+        if self.db_conn is None: return False
+        try:
+            return self.db_conn.isconnected()
+        except:
+            return False
+
+    def query_sql(self, sql: str) -> list[dict]:
+        """
+        Ejecuta una query SQL directa via HANA (hdbcli).
+        """
+        conn = self._get_db_conn()
+        if not conn:
+            logging.error("No hay conexión a la base de datos disponible.")
+            return []
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            cols = [desc[0] for desc in cursor.description]
+            results = [dict(zip(cols, row)) for row in cursor.fetchall()]
+            cursor.close()
+            return results
+        except Exception as e:
+            logging.error(f"Error en query SQL nativa: {e}")
+            return []
+

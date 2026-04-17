@@ -15,19 +15,36 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     for l in lines:
         # print(l["ShortName"] or l["shortname"])
         out = {
-            "AccountCode": l["AccountCode"],
             "Debit":  float(l.get("Debit")  or 0),
             "Credit": float(l.get("Credit") or 0),
             "LineMemo": l.get("LineMemo") or je["Memo"],
-            "Reference2":'',
-            "ReferenceDate2":'',
-            'ProjectCode':'',
-            'CostingCode':'',
             'FCCurrency':'',
-            "ShortName": l.get("ShortName",None) or l.get("shortname",None)
         }
         
-        for k in ["CostingCode","ProjectCode","Reference2","Reference1","U_INFOPE01","U_INFOPE02","LineNum"]:
+        # Lógica para Cuentas Asociadas vs Cuentas Normales
+        # Si hay ShortName (Socio de Negocio), lo enviamos y omitimos AccountCode para evitar error SAP -5002
+        sn = l.get("ShortName") or l.get("shortname")
+        if sn and sn != l.get("AccountCode"):
+            out["ShortName"] = sn
+        else:
+            out["AccountCode"] = l.get("AccountCode")
+            out["ShortName"] = l.get("AccountCode")
+        
+        # Mapeo de Centros de Costo (OcrCode1-5 internos -> U_RS_D1-5 de SAP como UDFs)
+        for i in range(1, 6):
+            internal_key = f"OcrCode{i}"
+            sap_key = f"U_RS_D{i}"
+            val = l.get(internal_key)
+            # Evitar enviar el nombre de la columna como valor (ej: "OcrCode1")
+            if val and str(val).strip() not in (internal_key, ""):
+                out[sap_key] = val
+
+        # Empleado (OHEM.Code) resuelto desde U_CE_PVAS / LicTradNum del payload
+        if l.get("EmployeeID") is not None and str(l["EmployeeID"]).strip() not in ("", "None", "0"):
+            out["EmployeeID"] = int(l["EmployeeID"])
+
+        # Otros campos
+        for k in ["ProjectCode","Reference2","Reference1","U_INFOPE01","U_INFOPE02","LineNum"]:
             if l.get(k): out[k] = l[k] or ''
         if l.get("FCCurrency") and l["FCCurrency"].upper() != local_currency:
             out["FCCurrency"] = l["FCCurrency"].upper()

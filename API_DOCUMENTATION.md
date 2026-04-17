@@ -1,6 +1,6 @@
 # Documentación Técnica: API de Orquestador de Asientos Contables
 
-Esta guía detalla la configuración técnica, arquitectura y despliegue del servicio para procesar asientos contables en SAP Business One.
+### Esta guía detalla la configuración técnica, arquitectura y despliegue del servicio para procesar asientos contables en SAP Business One.
 
 ---
 
