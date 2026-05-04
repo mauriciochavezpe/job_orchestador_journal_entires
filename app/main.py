@@ -45,9 +45,9 @@ def collect_items_for_post():
             cab_by_key[key] = {
                 "JdtNum":        c.get("JdtNum") or c.get("jdtnum"),
                 "Memo":          c.get("Reference1") or c.get("Reference1"),
-                "TaxDate":       validate_date2(c.get("DueDate") or c.get("DueDate"))[1],
-                "ReferenceDate": validate_date2(c.get("DueDate") or c.get("DueDate"))[1],
-                "DueDate":       validate_date2(c.get("DueDate") or c.get("duedate"))[1],
+                "TaxDate":       c.get("TaxDate") or c.get("TaxDate"),
+                "ReferenceDate": c.get("ReferenceDate") or c.get("ReferenceDate"),
+                "DueDate":       c.get("DueDate") or c.get("DueDate"),
                 "ProjectCode":   c.get("ProjectCode") or c.get("projectcode") or '',
                 "TransactionCode": c.get("TransactionCode") or c.get("transactioncode") or ""
                 # "Reference2":    c.get("Reference2") or c.get("reference2") or ''
@@ -70,9 +70,9 @@ def collect_items_for_post():
             line = {
                 "AccountCode": str(d.get("AccountCode") or d.get("accountcode")),
                 "LineMemo": d.get("LineMemo") or d.get("linememo") or "",
-                "DueDate": validate_date2(d.get("DueDate") or d.get("duedate") or '')[1],
-                "TaxDate": validate_date2(d.get("TaxDate") or d.get("taxdate") or '')[1],
-                "VatDate": validate_date2(d.get("VatDate") or d.get("vatdate") or '')[1],
+                "DueDate": d.get("DueDate") or d.get("duedate") or '',
+                "TaxDate": d.get("TaxDate") or d.get("taxdate") or '',
+                "VatDate": d.get("VatDate") or d.get("vatdate") or '',
                 "U_INFOPE01": d.get("U_INFOPE01") or d.get("u_infope01") or '',
                 "U_INFOPE02": d.get("U_INFOPE02") or d.get("u_infope02") or '',
                 "ReferenceDate2": d.get("ReferenceDate2") or d.get("referencedate2") or '',
@@ -91,10 +91,10 @@ def collect_items_for_post():
                 # Datos de cabecera desde línea
                 "JdtNum": d.get("JdtNum") or d.get("jdtnum") or '',
                 "Memo": d.get("Memo") or d.get("memo") or '',
-                "CabTaxDate": validate_date2(d.get("CabTaxDate") or d.get("cabtaxdate") or d.get("TaxDate") or '')[1],
-                "CabReferenceDate": validate_date2(d.get("CabReferenceDate") or d.get("cabreferencedate") or d.get("ReferenceDate") or '')[1],
-                "CabDueDate": validate_date2(d.get("CabDueDate") or d.get("cabduedate") or d.get("DueDate") or '')[1],
-                "TransactionCode": d.get("TransactionCode") or d.get("transactioncode") or '',
+                #"CabTaxDate": validate_date2(d.get("CabTaxDate") or d.get("cabtaxdate") or d.get("TaxDate") or '')[1],
+                #"CabReferenceDate": validate_date2(d.get("CabReferenceDate") or d.get("cabreferencedate") or d.get("ReferenceDate") or '')[1],
+                #"CabDueDate": validate_date2(d.get("CabDueDate") or d.get("cabduedate") or d.get("DueDate") or '')[1],
+                #"TransactionCode": d.get("TransactionCode") or d.get("transactioncode") or '',
             }
             
             groups.setdefault(key, []).append(line)
@@ -257,14 +257,12 @@ def process_payload_for_post(payload: list, sl=None) -> list:
         # Extraer cabecera asumiendo que viene en cada fila o en la primera
         if key not in cab_by_key:
             cab_by_key[key] = {
-                "DocumentType": "rAccount",
                 "JdtNum": row.get("JdtNum") or row.get("jdtnum") or key,
                 "Memo": row.get("MemoCab") or row.get("Reference1") or row.get("Reference1") or "",
-                "DueDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
-                "VatDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
+                "DueDate": row.get("DueDate") or row.get("DueDate") or row.get("DueDate") or getattr(row, 'DueDate', ''),
+                "VatDate": row.get("VatDate") or row.get("VatDate") or row.get("VatDate") or getattr(row, 'VatDate', ''),
                 "TaxDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
                 "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or row.get("VatDate") or getattr(row, 'referencedate', ''),
-                "DueDate": row.get("DueDate") or row.get("duedate") or row.get("VatDate") or getattr(row, 'duedate', ''),
                 #"ProjectCode": row.get("ProjectCodeCab") or row.get("projectcodecab") or row.get("ProjectCode") or row.get("projectcode") or '',
                 "TransactionCode": row.get("TransactionCode") or row.get("transactioncode") or "",
                 #"Reference2": row.get("Reference2Cab") or row.get("reference2cab") or row.get("Reference2") or row.get("reference2") or ''

@@ -1,9 +1,9 @@
 def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "PEN") -> dict:
     je = {
-        "ReferenceDate": cab.get("ReferenceDate") or cab.get("TaxDate") or '',
-        "TaxDate":       cab.get("TaxDate") or cab.get("ReferenceDate") or '',
+        "ReferenceDate": cab.get("ReferenceDate") or cab.get("ReferenceDate") or '',
+        "TaxDate":       cab.get("TaxDate") or cab.get("TaxDate") or '',
         "DueDate":       cab.get("DueDate") or cab.get("ReferenceDate") or '',
-        "Memo":          cab.get("Reference1") or f"Asiento {cab.get('JdtNum') or ''}",
+        "Memo":          cab.get("Memo") or f"Asiento {cab.get('JdtNum') or ''}",
         "Reference2":    cab.get("Reference2") or str(cab.get("JdtNum")) or '',
         "ProjectCode":   cab.get("ProjectCode") or '',
         "TransactionCode": cab.get("TransactionCode") or ""
