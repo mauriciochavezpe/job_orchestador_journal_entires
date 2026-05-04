@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from typing import List, Dict, Any
 import uvicorn
 from app.main import post_payload_to_sl
-
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(

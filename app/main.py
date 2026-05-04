@@ -62,8 +62,8 @@ def collect_items_for_post():
             d = it["data"]
             if first_detail_row is None:
                 first_detail_row = d
-                print(f"[DEBUG] Primera fila del DETALLE:\n{list(d.keys())}")
-                print(f"[DEBUG] Valores: {d}\n")
+                # print(f"[DEBUG] Primera fila del DETALLE:\n{list(d.keys())}")
+                # print(f"[DEBUG] Valores: {d}\n")
             key = str(d.get("parentkey") or d.get("ParentKey") or "")
             if not key: continue
 
@@ -76,7 +76,7 @@ def collect_items_for_post():
                 "U_INFOPE01": d.get("U_INFOPE01") or d.get("u_infope01") or '',
                 "U_INFOPE02": d.get("U_INFOPE02") or d.get("u_infope02") or '',
                 "ReferenceDate2": d.get("ReferenceDate2") or d.get("referencedate2") or '',
-                "FCCurrency": d.get("FCCurrency") or d.get("fccurrency") or '',
+                "FCCurrency": d.get("FCCurrency") or d.get("fccurrency") or 'PEN',
                 "Debit":  float(d.get("Debit")  or d.get("debit")  or 0.0) ,
                 "Credit": float(d.get("Credit") or d.get("credit") or 0.0) ,
                 "Reference2": d.get("Reference2") or d.get("reference2") or '',
@@ -122,8 +122,9 @@ def collect_items_for_post():
                 "Reference2": first_line.get("Reference2") or ''
             }
             if not items:  # Print solo del primer asiento
-                print(f"[DEBUG] Cabecera extraída para asiento {key}:\n{cab}\n")
-            items.append({"key": key, "cab": cab, "lines": lines})
+                # print(f"[DEBUG] Cabecera extraída para asiento {key}:\n{cab}\n")
+                
+                items.append({"key": key, "cab": cab, "lines": lines})
         else:
             print(f"[SKIP] Asiento {key} no balanceado (D={s['d']}, C={s['c']}).")
             
@@ -196,7 +197,7 @@ def post_to_sl():
     }
     
     _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
-    print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+    # print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
 
 
 def process_payload_for_post(payload: list, sl=None) -> list:
@@ -281,7 +282,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "U_INFOPE01": row.get("U_INFOPE01") or row.get("u_infope01") or '',
                 "U_INFOPE02": row.get("U_INFOPE02") or row.get("u_infope02") or '',
                 "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or '',
-                "FCCurrency": row.get("FCCurrency") or row.get("fccurrency") or '',
+                "FCCurrency": row.get("FCCurrency") or row.get("fccurrency") or 'PEN',
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
@@ -306,7 +307,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
             s["c"] += Decimal(str(line["Credit"]))
             sums[key] = s
 
-            print(f"[DEBUG] Línea procesada para key={key}: {line}")
+            # print(f"[DEBUG] Línea procesada para key={key}: {line}")
     # Filtrar solo balanceados
     TOL = Decimal("0.000001")
     items = []
@@ -376,7 +377,7 @@ def post_payload_to_sl(payload: list) -> dict:
     }
     
     _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
-    print(f"-> API Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+    # print(f"-> API Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
     
     return result_doc
 

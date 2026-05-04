@@ -75,7 +75,7 @@ class JournalPoster:
         # Segmentación de la carga total
         for i in range(0, len(items), chunk_size):
             chunk = items[i : i + chunk_size]
-            print(f"-> Procesando lote {i//chunk_size + 1} ({len(chunk)} registros de {len(items)})...")
+            # print(f"-> Procesando lote {i//chunk_size + 1} ({len(chunk)} registros de {len(items)})...")
             
             chunk_res = self._post_batch_chunk(chunk, build_fn)
             
@@ -106,7 +106,7 @@ class JournalPoster:
             content_id = str(it.get("key") or i)
             valid_requests.append({
                 "method": "POST",
-                "path": "/JournalEntries",
+                "path": "JournalEntries",
                 "body": payload,
                 "content_id": content_id,
             })

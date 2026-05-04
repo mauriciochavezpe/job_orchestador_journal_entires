@@ -10,7 +10,7 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     }
     
     # DEBUG: mostrar cabecera
-    print(f"[DEBUG JOURNAL] Cabecera del asiento:\n{je}\n")
+    # print(f"[DEBUG JOURNAL] Cabecera del asiento:\n{je}\n")
     
     sap_lines = []
     for l in lines:
@@ -60,6 +60,6 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     
     # DEBUG: mostrar JSON final
     import json
-    print(f"[DEBUG JOURNAL] JSON completo del asiento:\n{json.dumps(je, indent=2, default=str)}\n")
+    # print(f"[DEBUG JOURNAL] JSON completo del asiento:\n{json.dumps(je, indent=2, default=str)}\n")
     
     return je

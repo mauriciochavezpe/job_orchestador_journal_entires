@@ -11,7 +11,7 @@ class AccountsRepo:
         if not code: return False
         k = f"acct:{code}"
         hit = self.cache.get(k)
-        print(f"hit {k} - {hit} -{bool(None)}")
+        # print(f"hit {k} - {hit} -{bool(None)}")
         # if hit is not None: return bool(hit)
         try:
             acc = self.sl.get_account(code)

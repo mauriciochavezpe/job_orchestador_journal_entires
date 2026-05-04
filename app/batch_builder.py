@@ -40,11 +40,13 @@ def build_batch_request(requests: list[dict]) -> tuple[str, dict]:
         lines.append("Accept: application/json")
 
         if method in ("POST", "PUT", "PATCH", "MERGE"):
+            json_body = json.dumps(body, ensure_ascii=False)
             lines.append("Content-Type: application/json")
+            lines.append(f"Content-Length: {len(json_body.encode('utf-8'))}")
             lines.append("Prefer: return=representation")
             lines.append("")  # fin de headers HTTP internos
             # Cuerpo JSON
-            lines.append(json.dumps(body, ensure_ascii=False))
+            lines.append(json_body)
         else:
             # GET/DELETE sin cuerpo
             lines.append("")  # fin de headers HTTP internos
