@@ -3,11 +3,9 @@ sys.stdout.reconfigure(encoding='utf-8')
 import os
 import json
 from dotenv import load_dotenv
-from app.api import app
-from fastapi.testclient import TestClient
 
 load_dotenv()
-client = TestClient(app)
+from app.main import post_payload_to_sl
 
 with open("app.http", "r", encoding="utf-8") as f:
     lines = f.readlines()
@@ -22,8 +20,7 @@ for line in lines:
 
 payload = json.loads(payload_str)
 
-print("Enviando request a FastAPI...")
-response = client.post("/api/asientos", json=payload)
+print("Procesando payload directamente...")
+response = post_payload_to_sl(payload)
 
-print(f"Status Code FastAPI: {response.status_code}")
-print(f"Response: {json.dumps(response.json(), indent=2)}")
+print(json.dumps(response, indent=2))

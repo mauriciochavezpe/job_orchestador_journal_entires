@@ -65,6 +65,8 @@ class JournalPoster:
         valid_items_map = []
         # 1. Validar y preparar todas las solicitudes
         for i, it in enumerate(items):
+            # formateamos desde los valores del lines
+            
             payload = (build_fn or build_journal_entry)(it["cab"], it["lines"], local_currency=self.local_currency)
             # misses = self._validate_accounts(it["lines"])
             
@@ -75,7 +77,7 @@ class JournalPoster:
             
             valid_requests.append({
                 "method": "POST",
-                "path": "/JournalEntries",
+                "path": "/JournalVouchersService_Add",
                 "body": payload
             })
             valid_items_map.append(it)
@@ -190,7 +192,7 @@ class JournalPoster:
             content_id = str(it.get("key") or i)
             valid_requests.append({
                 "method": "POST",
-                "path": "/b1s/v1/JournalEntries",
+                "path": "JournalVouchersService_Add",
                 "body": payload,
                 "content_id": content_id,
             })
