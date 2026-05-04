@@ -55,93 +55,7 @@ class JournalPoster:
                 missing.add(code or "")
         return list(missing)
 
-    def post_all2(self, items: list[dict], build_fn=None):
-        
-        if self.breaker.check():
-            raise RuntimeError("Circuit breaker abierto; en enfriamiento.")
-
-        results = []
-        valid_requests = []
-        valid_items_map = []
-        # 1. Validar y preparar todas las solicitudes
-        for i, it in enumerate(items):
-            # formateamos desde los valores del lines
-            
-            payload = (build_fn or build_journal_entry)(it["cab"], it["lines"], local_currency=self.local_currency)
-            # misses = self._validate_accounts(it["lines"])
-            
-            # if misses:
-            #     err_msg = f"Cuentas invalidas: {', '.join(map(str, misses[:10]))}{'...' if len(misses)>10 else ''}"
-            #     results.append({"key": it["key"], "ok": False, "err": err_msg, "payload": payload})
-            #     continue
-            
-            valid_requests.append({
-                "method": "POST",
-                "path": "/JournalVouchersService_Add",
-                "body": payload
-            })
-            valid_items_map.append(it)
-        if not valid_requests:
-            return {"ok": 0, "fail": len(results), "results": results}
-        # print(f"valid {self.dry_run}")
-
-        # 2. Construir y ejecutar la solicitud batch
-        if not self.dry_run:
-            for it in valid_items_map:
-                results.append({"key": it["key"], "ok": True, "res": {"dry": True}, "payload": it["cab"]})
-            return {"ok": len(valid_items_map), "fail": len(items) - len(valid_items_map), "results": results}
-
-        batch_body, batch_headers = build_batch_request(valid_requests)
-        
-        try:
-            # La logica de reintento y rate limiting se aplica a todo el lote
-            def call():
-                self.limiter.acquire()
-                try:
-                    return self.sl.request("POST", "/$batch", json=None, headers=batch_headers, data=batch_body)
-                finally:
-                    self.limiter.release()
-            
-            raw_res = with_retry(call, retries=5, base_ms=500, max_ms=30_000)
-            self.breaker.on_success()
-
-        except Exception as e:
-            self.breaker.on_fail()
-            # Si todo el lote falla, marcamos todos los asientos de ese lote como fallidos
-            for it in valid_items_map:
-                results.append({"key": it["key"], "ok": False, "err": f"Fallo en lote completo: {e}", "payload": it["cab"]})
-            return {"ok": 0, "fail": len(items), "results": results}
-
-        # 3. Interpretar la respuesta del lote
-        content_type = raw_res.headers.get("Content-Type", "")
-        # boundary_match = raw_res.search(r'boundary=(batchresponse_.*)', content_type)
-        ct = raw_res.headers.get('Content-Type', '')
-        m = re.search(r'boundary="?([^";]+)"?', ct, flags=re.I)
-        boundary_match = m.group(1) if m else None
-        if not boundary_match:
-            # Fallo si no podemos interpretar la respuesta
-            for it in valid_items_map:
-                results.append({"key": it["key"], "ok": False, "err": "No se pudo encontrar el boundary en la respuesta del lote", "payload": it["cab"]})
-            return {"ok": 0, "fail": len(items), "results": results}
-
-        batch_responses = parse_batch_response(raw_res.text, boundary_match)
-        # print(f"test {batch_responses}")
-        for i, res_part in enumerate(batch_responses):
-            item = valid_items_map[i]
-            payload = valid_requests[i]['body']
-            if res_part["status_code"] >= 200 and res_part["status_code"] < 300:
-                results.append({"key": item["key"], "ok": True, "res": res_part["body"], "payload": payload})
-            else:
-                results.append({"key": item["key"], "ok": False, "err": res_part["body"], "payload": payload})
-                self.breaker.on_fail()
-
-        ok_count = sum(1 for r in results if r["ok"])
-        fail_count = sum(1 for r in results if not r["ok"])
-        
-        return {"ok": ok_count, "fail": fail_count, "results": results}
     
-    
-
     def post_all(self, items: list[dict], build_fn=None, chunk_size: int = 20):
         """
         Orquesta el envío de todos los asientos contables, dividiéndolos en
@@ -192,7 +106,7 @@ class JournalPoster:
             content_id = str(it.get("key") or i)
             valid_requests.append({
                 "method": "POST",
-                "path": "JournalVouchersService_Add",
+                "path": "/JournalEntries",
                 "body": payload,
                 "content_id": content_id,
             })

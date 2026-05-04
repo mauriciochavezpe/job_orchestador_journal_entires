@@ -1,15 +1,16 @@
 def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "PEN") -> dict:
     je = {
-        "ReferenceDate": '', #cab.get("ReferenceDate") or cab.get("TaxDate"),
-        "TaxDate":       '', # cab.get("TaxDate") or cab.get("ReferenceDate"),
-        "DueDate":       '', #cab.get("DueDate") or cab.get("ReferenceDate"),
-        "Memo":          '', #cab.get("Memo") or f"Asiento {cab.get('JdtNum') or ''}",
-        "Reference2":    '', #cab.get("Reference2") or str(cab.get("JdtNum")) or '',
-        "ProjectCode": '',
-        "TransactionCode":''
+        "ReferenceDate": cab.get("ReferenceDate") or cab.get("TaxDate") or '',
+        "TaxDate":       cab.get("TaxDate") or cab.get("ReferenceDate") or '',
+        "DueDate":       cab.get("DueDate") or cab.get("ReferenceDate") or '',
+        "Memo":          cab.get("Reference1") or f"Asiento {cab.get('JdtNum') or ''}",
+        "Reference2":    cab.get("Reference2") or str(cab.get("JdtNum")) or '',
+        "ProjectCode":   cab.get("ProjectCode") or '',
+        "TransactionCode": cab.get("TransactionCode") or ""
     }
-    if cab.get("ProjectCode"):     je["ProjectCode"] = cab["ProjectCode"] or ''
-    if cab.get("TransactionCode"): je["TransactionCode"] = cab["TransactionCode"] or ""
+    
+    # DEBUG: mostrar cabecera
+    print(f"[DEBUG JOURNAL] Cabecera del asiento:\n{je}\n")
     
     sap_lines = []
     for l in lines:
@@ -20,12 +21,6 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             "LineMemo": l.get("LineMemo") or je["Memo"],
             'FCCurrency':'',
         }
-        
-        # para las cabeceras
-        je["Memo"]=l.get("Memo")
-        je["TaxDate"]=l.get("DueDate")
-        je["ReferenceDate"]=l.get("DueDate")
-        je["DueDate"]=l.get("DueDate")
         # Lógica para Cuentas Asociadas vs Cuentas Normales
         # Siempre enviamos AccountCode para que SAP use la cuenta explícita del asiento.
         # Si además hay un ShortName (Socio de Negocio / CardCode) distinto al AccountCode,
@@ -62,4 +57,9 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
     
 
     je["JournalEntryLines"] = sap_lines
+    
+    # DEBUG: mostrar JSON final
+    import json
+    print(f"[DEBUG JOURNAL] JSON completo del asiento:\n{json.dumps(je, indent=2, default=str)}\n")
+    
     return je

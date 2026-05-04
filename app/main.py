@@ -44,21 +44,26 @@ def collect_items_for_post():
             if not key: continue
             cab_by_key[key] = {
                 "JdtNum":        c.get("JdtNum") or c.get("jdtnum"),
-                "Memo":          c.get("Memo") or c.get("memo"),
-                "TaxDate":       validate_date2(c.get("TaxDate") or c.get("taxdate"))[1],
-                "ReferenceDate": validate_date2(c.get("ReferenceDate") or c.get("referencedate"))[1],
+                "Memo":          c.get("Reference1") or c.get("Reference1"),
+                "TaxDate":       validate_date2(c.get("DueDate") or c.get("DueDate"))[1],
+                "ReferenceDate": validate_date2(c.get("DueDate") or c.get("DueDate"))[1],
                 "DueDate":       validate_date2(c.get("DueDate") or c.get("duedate"))[1],
                 "ProjectCode":   c.get("ProjectCode") or c.get("projectcode") or '',
-                "TransactionCode": c.get("TransactionCode") or c.get("transactioncode") or "",
-                "Reference2":    c.get("Reference2") or c.get("reference2") or ''
+                "TransactionCode": c.get("TransactionCode") or c.get("transactioncode") or ""
+                # "Reference2":    c.get("Reference2") or c.get("reference2") or ''
             }
 
     # 2) Agrupar DETALLES por ParentKey
     groups = {}
     sums = {}
+    first_detail_row = None
     for batch in read_sheet_in_chunks(cfg.det_path, sheet_name=cfg.sheet_det, chunk_size=100, skip_rows=cfg.skip_rows, header_row=1):
         for it in batch:
             d = it["data"]
+            if first_detail_row is None:
+                first_detail_row = d
+                print(f"[DEBUG] Primera fila del DETALLE:\n{list(d.keys())}")
+                print(f"[DEBUG] Valores: {d}\n")
             key = str(d.get("parentkey") or d.get("ParentKey") or "")
             if not key: continue
 
@@ -82,8 +87,15 @@ def collect_items_for_post():
                 "OcrCode5":  d.get("OcrCode5") or '',
                 "ProjectCode": d.get("ProjectCode") or d.get("projectcode") or '',
                 "Reference1": d.get("Reference1") or d.get("reference1") or '',
-                "ShortName": d.get("ShortName") or d.get("shortname") or ''
-            } 
+                "ShortName": d.get("ShortName") or d.get("shortname") or '',
+                # Datos de cabecera desde línea
+                "JdtNum": d.get("JdtNum") or d.get("jdtnum") or '',
+                "Memo": d.get("Memo") or d.get("memo") or '',
+                "CabTaxDate": validate_date2(d.get("CabTaxDate") or d.get("cabtaxdate") or d.get("TaxDate") or '')[1],
+                "CabReferenceDate": validate_date2(d.get("CabReferenceDate") or d.get("cabreferencedate") or d.get("ReferenceDate") or '')[1],
+                "CabDueDate": validate_date2(d.get("CabDueDate") or d.get("cabduedate") or d.get("DueDate") or '')[1],
+                "TransactionCode": d.get("TransactionCode") or d.get("transactioncode") or '',
+            }
             
             groups.setdefault(key, []).append(line)
             s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
@@ -91,17 +103,27 @@ def collect_items_for_post():
             s["c"] += Decimal(str(line["Credit"]))
             sums[key] = s
 
-    # 3) Filtrar solo asientos balanceados y con cabecera existente
+    # 3) Filtrar solo asientos balanceados y extraer cabecera de primera línea
     TOL = Decimal("0.000001")
     items = []
     for key, lines in groups.items():
         s = sums.get(key) or {"d": Decimal(0), "c": Decimal(0)}
         if abs(s["d"] - s["c"]) <= TOL:
-            cab = cab_by_key.get(key)
-            if cab:
-                items.append({"key": key, "cab": cab, "lines": lines})
-            else:
-                print(f"[WARN] Sin cabecera (CAB) para la llave {key}, se omite.")
+            # Extraer cabecera de la primera línea
+            first_line = lines[0]
+            cab = {
+                "JdtNum": first_line.get("JdtNum") or key,
+                "Memo": first_line.get("Memo") or f"Asiento {key}",
+                "TaxDate": first_line.get("CabTaxDate") or '',
+                "ReferenceDate": first_line.get("CabReferenceDate") or '',
+                "DueDate": first_line.get("CabDueDate") or '',
+                "ProjectCode": first_line.get("ProjectCode") or '',
+                "TransactionCode": first_line.get("TransactionCode") or '',
+                "Reference2": first_line.get("Reference2") or ''
+            }
+            if not items:  # Print solo del primer asiento
+                print(f"[DEBUG] Cabecera extraída para asiento {key}:\n{cab}\n")
+            items.append({"key": key, "cab": cab, "lines": lines})
         else:
             print(f"[SKIP] Asiento {key} no balanceado (D={s['d']}, C={s['c']}).")
             
@@ -134,7 +156,7 @@ def post_to_sl():
         sl, repo,
         rps=rps, concurrency=conc,
         local_currency="PEN",
-        dry_run=True,
+        dry_run=False,
         breaker=CircuitBreaker(enabled=True, fail_threshold=8, cool_down_sec=30)
     )
 
@@ -235,16 +257,19 @@ def process_payload_for_post(payload: list, sl=None) -> list:
         # Extraer cabecera asumiendo que viene en cada fila o en la primera
         if key not in cab_by_key:
             cab_by_key[key] = {
+                "DocumentType": "rAccount",
                 "JdtNum": row.get("JdtNum") or row.get("jdtnum") or key,
-                "Memo": row.get("MemoCab") or row.get("Memo") or row.get("memo") or "",
-                "TaxDate": validate_date2(row.get("TaxDateCab") or row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
-                "ReferenceDate": validate_date2(row.get("ReferenceDateCab") or row.get("ReferenceDate") or row.get("referencedate") or getattr(row, 'referencedate', ''))[1],
-                "DueDate": validate_date2(row.get("DueDateCab") or row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
+                "Memo": row.get("MemoCab") or row.get("Reference1") or row.get("Reference1") or "",
+                "DueDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
+                "VatDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
+                "TaxDate": row.get("TaxDate") or row.get("taxdate") or row.get("VatDate") or getattr(row, 'taxdate', ''),
+                "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or row.get("VatDate") or getattr(row, 'referencedate', ''),
+                "DueDate": row.get("DueDate") or row.get("duedate") or row.get("VatDate") or getattr(row, 'duedate', ''),
                 #"ProjectCode": row.get("ProjectCodeCab") or row.get("projectcodecab") or row.get("ProjectCode") or row.get("projectcode") or '',
                 "TransactionCode": row.get("TransactionCode") or row.get("transactioncode") or "",
                 #"Reference2": row.get("Reference2Cab") or row.get("reference2cab") or row.get("Reference2") or row.get("reference2") or ''
             }
-
+        # print(f"[DEBUG] Procesando línea con key={key}: {row}")
         # Extraer línea de detalle
         acc = str(row.get("AccountCode") or row.get("accountcode") or "")
         if acc:
@@ -252,9 +277,9 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "AccountCode": acc,
                 #"LineNum": row.get("LineNum") or row.get("linenum") or '',
                 "LineMemo": row.get("LineMemo") or row.get("linememo") or "",
-                "DueDate": validate_date2(row.get("DueDate") or row.get("duedate") or getattr(row, 'duedate', ''))[1],
-                "TaxDate": validate_date2(row.get("TaxDate") or row.get("taxdate") or getattr(row, 'taxdate', ''))[1],
-                "VatDate": validate_date2(row.get("VatDate") or row.get("vatdate") or getattr(row, 'vatdate', ''))[1],
+                "DueDate":  row.get("TaxDate") or row.get("TaxDate") or getattr(row, 'TaxDate', ''),
+                "TaxDate":  row.get("TaxDate") or row.get("TaxDate") or getattr(row, 'TaxDate', ''),
+                "VatDate":  row.get("TaxDate") or row.get("TaxDate") or getattr(row, 'TaxDate', ''),
                 "U_INFOPE01": row.get("U_INFOPE01") or row.get("u_infope01") or '',
                 "U_INFOPE02": row.get("U_INFOPE02") or row.get("u_infope02") or '',
                 "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or '',
@@ -283,6 +308,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
             s["c"] += Decimal(str(line["Credit"]))
             sums[key] = s
 
+            print(f"[DEBUG] Línea procesada para key={key}: {line}")
     # Filtrar solo balanceados
     TOL = Decimal("0.000001")
     items = []
