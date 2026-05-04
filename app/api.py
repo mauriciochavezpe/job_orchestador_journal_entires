@@ -27,6 +27,7 @@ async def process_journal_entries(payload: List[Dict[str, Any]]):
     Recibe una lista plana de diccionarios, donde cada diccionario representa una línea
     con datos tanto de la cabecera como del detalle del asiento contable.
     """
+    
     if not payload:
         raise HTTPException(status_code=400, detail="El payload está vacío")
     
