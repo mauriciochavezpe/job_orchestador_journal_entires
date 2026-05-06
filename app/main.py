@@ -244,17 +244,16 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         ohem_cache[card_code] = {}
                 # Inyectar OcrCode* solo si OHEM retornó valor y el row no los trae
                 ohem = ohem_cache.get(card_code, {})
-                # VALIDAMOS SI EXISTE 
-                if ohem.get("CostCenter") != "":
-                    # canal
-                    row["ProfitCode"] = ohem["U_RML_CECO1"]
-                    # centro de costo
-                    row["OcrCode5"] = ohem["CostCenter"]
-                    row["OcrCode2"] = ohem["U_RML_CECO2"]
-                    # centro de costo
-                    row["OcrCode3"] = ohem["U_RML_CECO3"]
-                    # centro de costo
-                    row["OcrCode4"] = ohem["U_RML_CECO4"]
+                # VALIDAMOS SI EXISTE un CostCenter válido en OHEM
+                if ohem and ohem.get("CostCenter"):
+                    # canal / ProfitCode
+                    row["ProfitCode"] = ohem.get("U_RML_CECO1") or ""
+                    # OcrCode (centros de costo y dimensiones)
+                    row["OcrCode1"] = ohem.get("U_RML_CECO1") or ""
+                    row["OcrCode2"] = ohem.get("U_RML_CECO2") or ""
+                    row["OcrCode3"] = ohem.get("U_RML_CECO3") or ""
+                    row["OcrCode4"] = ohem.get("U_RML_CECO4") or ""
+                    row["OcrCode5"] = ohem.get("CostCenter") or ""
                 # empleado
         # ─────────────────────────────────────────────────────────────────────────
 
@@ -298,6 +297,9 @@ def process_payload_for_post(payload: list, sl=None) -> list:
             for i in range(1, 6):
                 val = row.get(f"OcrCode{i}")
                 if val: line[f"OcrCode{i}"] = val
+            # ProfitCode (viene de OHEM U_RML_CECO1 o del payload)
+            if row.get("ProfitCode"):
+                line["ProfitCode"] = row["ProfitCode"]
             if row.get("ShortName") or row.get("shortname"):
                 line["ShortName"] = row.get("ShortName") or row.get("shortname")
             if row.get("ProjectCode") or row.get("projectcode"):

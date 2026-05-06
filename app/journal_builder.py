@@ -42,6 +42,25 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             if val and str(val).strip() not in (internal_key, ""):
                 out[sap_key] = val
 
+        # Mapeo de campos nativos de SAP para dimensiones / reglas de distribución
+        # OcrCode  = Dimensión 1, OcrCode2 = Dim 2, ... OcrCode5 = Dim 5
+        # CostingCode = Regla de distribución principal (equivale a OcrCode1)
+        ocr_map = {
+            "OcrCode1": "CostingCode",
+            "OcrCode2": "CostingCode2",
+            "OcrCode3": "CostingCode3",
+            "OcrCode4": "CostingCode4",
+            "OcrCode5": "CostingCode5",
+        }
+        for internal_key, sap_native_key in ocr_map.items():
+            val = l.get(internal_key)
+            if val and str(val).strip() not in (internal_key, ""):
+                out[sap_native_key] = val
+
+        # ProfitCode nativo de SAP (centro de beneficio / profit center)
+        if l.get("ProfitCode") and str(l["ProfitCode"]).strip() not in ("ProfitCode", ""):
+            out["ProfitCode"] = l["ProfitCode"]
+
         # Empleado (OHEM.Code) resuelto desde U_CE_PVAS / LicTradNum del payload
         if l.get("EmployeeID") is not None and str(l["EmployeeID"]).strip() not in ("", "None", "0"):
             out["EmployeeID"] = int(l["EmployeeID"])
