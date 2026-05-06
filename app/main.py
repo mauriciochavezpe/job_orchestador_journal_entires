@@ -225,10 +225,10 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         
                         sql = (
                             f"SELECT H1.\"U_CE_PVAS\", H1.\"U_RML_CECO1\", H1.\"U_RML_CECO2\","
-                            f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"Code\""
+                            f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"CostCenter\", H1.\"Code\""
                             f" FROM \"{db_schema}\".\"OCRD\" O"
                             f" INNER JOIN \"{db_schema}\".\"OHEM\" H1"
-                            f" ON O.\"LicTradNum\"=H1.\"U_CE_PVAS\""
+                            f" ON O.\"CardCode\"=H1.\"U_CE_PVAS\""
                             f" WHERE O.\"CardCode\"='{card_code}'"
                         )
                         print(f"[DEBUG SQL] Consultando OHEM para: {card_code} en schema: {db_schema}")
@@ -244,11 +244,18 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         ohem_cache[card_code] = {}
                 # Inyectar OcrCode* solo si OHEM retornó valor y el row no los trae
                 ohem = ohem_cache.get(card_code, {})
-                for i in range(1, 5):
-                    ceco_key = f"U_RML_CECO{i}"
-                    jdl = f"OcrCode{i}"
-                    if ohem.get(ceco_key) and not row.get(jdl):
-                        row[jdl] = ohem[ceco_key]
+                # VALIDAMOS SI EXISTE 
+                if ohem.get("CostCenter") != "":
+                    # canal
+                    row["ProfitCode"] = ohem["U_RML_CECO1"]
+                    # centro de costo
+                    row["OcrCode5"] = ohem["CostCenter"]
+                    row["OcrCode2"] = ohem["U_RML_CECO2"]
+                    # centro de costo
+                    row["OcrCode3"] = ohem["U_RML_CECO3"]
+                    # centro de costo
+                    row["OcrCode4"] = ohem["U_RML_CECO4"]
+                # empleado
         # ─────────────────────────────────────────────────────────────────────────
 
         # Extraer llave común

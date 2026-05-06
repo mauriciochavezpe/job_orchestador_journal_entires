@@ -115,7 +115,7 @@ class ServiceLayerClient:
     def post_batch(self, payload: str, headers: dict):
         """POST a batch request. Content-Type must be handled by caller."""
         # print(f"batch: {payload}")
-        return self.request("POST", "/$batch", json=payload, headers=headers)
+        return self.request("POST", "/$batch", data=payload, headers=headers)
 
     def _get_db_conn(self):
         """Inicializa o retorna la conexión actual a la base de datos."""
