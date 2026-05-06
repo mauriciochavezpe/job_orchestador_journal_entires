@@ -248,7 +248,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 if ohem and ohem.get("CostCenter"):
                     # canal / ProfitCode
                     # OcrCode (centros de costo y dimensiones)
-                    row["CostingCode"] = ohem.get("CostCenter") or ""
+                    row["CostingCode"] = ohem.get("U_RML_CECO1") or ""
                     row["CostingCode2"] = ohem.get("U_RML_CECO2") or ""
                     row["CostingCode3"] = ohem.get("U_RML_CECO3") or ""
                     row["CostingCode4"] = ohem.get("U_RML_CECO4") or ""
@@ -291,17 +291,17 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
-                "CostingCode" : row.get("CostingCode") or "",
-                "CostingCode2" : row.get("CostingCode2") or "",
-                "CostingCode3" : row.get("CostingCode3") or "",
-                "CostingCode4" : row.get("CostingCode4") or "",
-                "CostingCode5" : row.get("CostingCode5") or ""
+                # Las 5 dimensiones: primero del OHEM (CostingCode*), fallback al JSON (OcrCode*)
+                "CostingCode"  : row.get("CostingCode")  or row.get("OcrCode1") or "",
+                "CostingCode2" : row.get("CostingCode2") or row.get("OcrCode2") or "",
+                "CostingCode3" : row.get("CostingCode3") or row.get("OcrCode3") or "",
+                "CostingCode4" : row.get("CostingCode4") or row.get("OcrCode4") or "",
+                "CostingCode5" : row.get("CostingCode5") or row.get("OcrCode5") or "",
             }
-
             # Campos opcionales: solo se agregan si tienen valor
-            for i in range(1, 6):
-                val = row.get(f"OcrCode{i}")
-                if val: line[f"OcrCode{i}"] = val
+            # for i in range(1, 6):
+            #     val = row.get(f"OcrCode{i}")
+            #     if val: line[f"OcrCode{i}"] = val
             if row.get("ShortName") or row.get("shortname"):
                 line["ShortName"] = row.get("ShortName") or row.get("shortname")
             if row.get("ProjectCode") or row.get("projectcode"):
