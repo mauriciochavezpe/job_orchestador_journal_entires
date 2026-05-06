@@ -247,13 +247,12 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 # VALIDAMOS SI EXISTE un CostCenter válido en OHEM
                 if ohem and ohem.get("CostCenter"):
                     # canal / ProfitCode
-                    row["ProfitCode"] = ohem.get("U_RML_CECO1") or ""
                     # OcrCode (centros de costo y dimensiones)
-                    row["OcrCode1"] = ohem.get("U_RML_CECO1") or ""
-                    row["OcrCode2"] = ohem.get("U_RML_CECO2") or ""
-                    row["OcrCode3"] = ohem.get("U_RML_CECO3") or ""
-                    row["OcrCode4"] = ohem.get("U_RML_CECO4") or ""
-                    row["OcrCode5"] = ohem.get("CostCenter") or ""
+                    row["CostingCode"] = ohem.get("CostCenter") or ""
+                    row["CostingCode2"] = ohem.get("U_RML_CECO2") or ""
+                    row["CostingCode3"] = ohem.get("U_RML_CECO3") or ""
+                    row["CostingCode4"] = ohem.get("U_RML_CECO4") or ""
+                    row["CostingCode5"] = ohem.get("CostCenter") or ""
                 # empleado
         # ─────────────────────────────────────────────────────────────────────────
 
@@ -292,20 +291,17 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
-                "CostingCode" : row.get("ProfitCode") or "",
-                "CostingCode2" : row.get("OcrCode2") or "",
-                "CostingCode3" : row.get("OcrCode3") or "",
-                "CostingCode4" : row.get("OcrCode4") or "",
-                "CostingCode5" : row.get("OcrCode5") or ""
+                "CostingCode" : row.get("CostingCode") or "",
+                "CostingCode2" : row.get("CostingCode2") or "",
+                "CostingCode3" : row.get("CostingCode3") or "",
+                "CostingCode4" : row.get("CostingCode4") or "",
+                "CostingCode5" : row.get("CostingCode5") or ""
             }
 
             # Campos opcionales: solo se agregan si tienen valor
             for i in range(1, 6):
                 val = row.get(f"OcrCode{i}")
                 if val: line[f"OcrCode{i}"] = val
-            # ProfitCode (viene de OHEM U_RML_CECO1 o del payload)
-            if row.get("ProfitCode"):
-                line["ProfitCode"] = row["ProfitCode"]
             if row.get("ShortName") or row.get("shortname"):
                 line["ShortName"] = row.get("ShortName") or row.get("shortname")
             if row.get("ProjectCode") or row.get("projectcode"):

@@ -34,30 +34,19 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             out["ShortName"] = sn
         
 
-        if l.get("ProfitCode") and str(l["ProfitCode"]).strip() not in ("", "None", "0"):
-            out["ProfitCode"] = l["ProfitCode"]
-        if l.get("OcrCode2") and str(l["OcrCode2"]).strip() not in ("", "None", "0"):
-            out["OcrCode2"] = l["OcrCode2"]
-        if l.get("OcrCode3") and str(l["OcrCode3"]).strip() not in ("", "None", "0"):
-            out["OcrCode3"] = l["OcrCode3"]
-        if l.get("OcrCode4") and str(l["OcrCode4"]).strip() not in ("", "None", "0"):
-            out["OcrCode4"] = l["OcrCode4"]
-        if l.get("OcrCode5") and str(l["OcrCode5"]).strip() not in ("", "None", "0"):
-            out["OcrCode5"] = l["OcrCode5"]
         # Mapeo de Centros de Costo (OcrCode1-5 internos -> U_RS_D1-5 de SAP como UDFs)
         for i in range(1, 6):
-            internal_key = f"OcrCode{i}"
+            internal_key = f"CostingCode{i}"
             sap_key = f"U_RS_D{i}"
             val = l.get(internal_key)
-            # Evitar enviar el nombre de la columna como valor (ej: "OcrCode1")
             if val and str(val).strip() not in (internal_key, ""):
-              out[sap_key] = val
+                out[sap_key] = val
 
         # Mapeo de campos nativos de SAP para dimensiones / reglas de distribución
         # OcrCode  = Dimensión 1, OcrCode2 = Dim 2, ... OcrCode5 = Dim 5
         # CostingCode = Regla de distribución principal (equivale a OcrCode1)
         ocr_map = {
-            "OcrCode1": "CostingCode",
+            "ProfitCode": "CostingCode",
             "OcrCode2": "CostingCode2",
             "OcrCode3": "CostingCode3",
             "OcrCode4": "CostingCode4",
