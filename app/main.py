@@ -225,10 +225,10 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         
                         sql = (
                             f"SELECT H1.\"U_CE_PVAS\", H1.\"U_RML_CECO1\", H1.\"U_RML_CECO2\","
-                            f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"Code\""
+                            f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"CostCenter\", H1.\"Code\""
                             f" FROM \"{db_schema}\".\"OCRD\" O"
                             f" INNER JOIN \"{db_schema}\".\"OHEM\" H1"
-                            f" ON O.\"LicTradNum\"=H1.\"U_CE_PVAS\""
+                            f" ON O.\"CardCode\"=H1.\"U_CE_PVAS\""
                             f" WHERE O.\"CardCode\"='{card_code}'"
                         )
                         print(f"[DEBUG SQL] Consultando OHEM para: {card_code} en schema: {db_schema}")
@@ -236,7 +236,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         rows_ohem = sl.query_sql(sql)
                         ohem_cache[card_code] = rows_ohem[0] if rows_ohem else {}
                         if not rows_ohem:
-                            print(f"[OHEM] No se encontró información para CardCode={card_code}")
+                            print(f"[OHEM] No hay data para CardCode={card_code}")
                         else:
                             print(f"[OHEM] CardCode={card_code} -> {ohem_cache[card_code]}")
                     except Exception as e:
@@ -244,11 +244,15 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         ohem_cache[card_code] = {}
                 # Inyectar OcrCode* solo si OHEM retornó valor y el row no los trae
                 ohem = ohem_cache.get(card_code, {})
-                for i in range(1, 5):
-                    ceco_key = f"U_RML_CECO{i}"
-                    jdl = f"OcrCode{i}"
-                    if ohem.get(ceco_key) and not row.get(jdl):
-                        row[jdl] = ohem[ceco_key]
+                print("user ",ohem.get("CostCenter")    )
+                if ohem and ohem.get("CostCenter"):
+                    # canal
+                    row["ProfitCode"] = ohem.get("U_RML_CECO1") or ""
+                    # centro de costo
+                    row["OcrCode5"] = ohem.get("CostCenter") or ""
+                    row["OcrCode2"] = ohem.get("U_RML_CECO2") or ""
+                    row["OcrCode3"] = ohem.get("U_RML_CECO3") or ""
+                    row["OcrCode4"] = ohem.get("U_RML_CECO4") or ""
         # ─────────────────────────────────────────────────────────────────────────
 
         # Extraer llave común
@@ -286,11 +290,17 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
+                "CostingCode" : row.get("ProfitCode") or "",
+                "CostingCode2" : row.get("OcrCode2") or "",
+                "CostingCode3" : row.get("OcrCode3") or "",
+                "CostingCode4" : row.get("OcrCode4") or "",
+                "CostingCode5" : row.get("OcrCode5") or ""
             }
+
             # Campos opcionales: solo se agregan si tienen valor
-            for i in range(1, 6):
-                val = row.get(f"OcrCode{i}")
-                if val: line[f"OcrCode{i}"] = val
+            #for i in range(1, 6):
+                #val = row.get(f"OcrCode{i}")
+                #if val: line[f"OcrCode{i}"] = val
             if row.get("ShortName") or row.get("shortname"):
                 line["ShortName"] = row.get("ShortName") or row.get("shortname")
             if row.get("ProjectCode") or row.get("projectcode"):
