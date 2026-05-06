@@ -236,7 +236,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                         rows_ohem = sl.query_sql(sql)
                         ohem_cache[card_code] = rows_ohem[0] if rows_ohem else {}
                         if not rows_ohem:
-                            print(f"[OHEM] No se encontró información para CardCode={card_code}")
+                            print(f"[OHEM] No hay data para CardCode={card_code}")
                         else:
                             print(f"[OHEM] CardCode={card_code} -> {ohem_cache[card_code]}")
                     except Exception as e:
@@ -292,7 +292,13 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
+                "CostingCode" : row.get("ProfitCode") or "",
+                "CostingCode2" : row.get("OcrCode2") or "",
+                "CostingCode3" : row.get("OcrCode3") or "",
+                "CostingCode4" : row.get("OcrCode4") or "",
+                "CostingCode5" : row.get("OcrCode5") or ""
             }
+
             # Campos opcionales: solo se agregan si tienen valor
             for i in range(1, 6):
                 val = row.get(f"OcrCode{i}")
