@@ -34,32 +34,22 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             out["ShortName"] = sn
         
 
-        # Mapeo de Centros de Costo (OcrCode1-5 internos -> U_RS_D1-5 de SAP como UDFs)
-        for i in range(1, 6):
-            internal_key = f"CostingCode{i}"
-            sap_key = f"U_RS_D{i}"
-            val = l.get(internal_key)
-            if val and str(val).strip() not in (internal_key, ""):
-                out[sap_key] = val
-
-        # Mapeo de campos nativos de SAP para dimensiones / reglas de distribución
-        # OcrCode  = Dimensión 1, OcrCode2 = Dim 2, ... OcrCode5 = Dim 5
-        # CostingCode = Regla de distribución principal (equivale a OcrCode1)
-        ocr_map = {
-            "ProfitCode": "CostingCode",
-            "OcrCode2": "CostingCode2",
-            "OcrCode3": "CostingCode3",
-            "OcrCode4": "CostingCode4",
-            "OcrCode5": "CostingCode5",
+        # Mapeo de Centros de Costo:
+        # - Campos nativos SAP: CostingCode (dim1), CostingCode2-5
+        # - UDFs del asiento: U_RS_D1-5
+        # El campo "CostingCode" (sin número) equivale a la dimensión 1.
+        costing_fields = {
+            "CostingCode":  ("CostingCode",  "U_RS_D1"),
+            "CostingCode2": ("CostingCode2", "U_RS_D2"),
+            "CostingCode3": ("CostingCode3", "U_RS_D3"),
+            "CostingCode4": ("CostingCode4", "U_RS_D4"),
+            "CostingCode5": ("CostingCode5", "U_RS_D5"),
         }
-        for internal_key, sap_native_key in ocr_map.items():
-            val = l.get(internal_key)
-            if val and str(val).strip() not in (internal_key, ""):
-                out[sap_native_key] = val
-
-        # ProfitCode nativo de SAP (centro de beneficio / profit center)
-        if l.get("ProfitCode") and str(l["ProfitCode"]).strip() not in ("ProfitCode", ""):
-            out["ProfitCode"] = l["ProfitCode"]
+        for src_key, (sap_native, sap_udf) in costing_fields.items():
+            val = l.get(src_key)
+            if val and str(val).strip() not in (src_key, ""):
+                out[sap_native] = val  # campo nativo SAP
+                out[sap_udf]    = val  # UDF del asiento
 
         # Empleado (OHEM.Code) resuelto desde U_CE_PVAS / LicTradNum del payload
         if l.get("EmployeeID") is not None and str(l["EmployeeID"]).strip() not in ("", "None", "0"):
