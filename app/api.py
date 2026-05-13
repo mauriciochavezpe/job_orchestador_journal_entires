@@ -43,4 +43,4 @@ async def process_journal_entries(payload: List[Dict[str, Any]]):
 
 # Si se ejecuta este archivo directamente, levanta el servidor localmente en el puerto 8000
 if __name__ == "__main__":
-    uvicorn.run("app.api:app", host="0.0.0.0", port=3018, reload=True)
+    uvicorn.run("app.api:app", host="0.0.0.0", port=3018, reload=True, timeout_keep_alive=300)
