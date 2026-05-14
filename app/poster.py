@@ -56,26 +56,59 @@ class JournalPoster:
         return list(missing)
 
     
-    def post_all(self, items: list[dict], build_fn=None, chunk_size: int = 20):
+    def _split_large_items(self, items: list[dict], max_lines: int = 500) -> list[dict]:
+        """
+        Divide asientos con demasiadas líneas en sub-asientos más pequeños.
+        Cada sub-asiento hereda la misma cabecera y recibe un sufijo en Reference2.
+        Necesario cuando un asiento de planilla tiene miles de líneas.
+        """
+        result = []
+        for item in items:
+            lines = item.get("lines", [])
+            if len(lines) <= max_lines:
+                result.append(item)
+                continue
+
+            total_parts = (len(lines) + max_lines - 1) // max_lines
+            print(f"[SPLIT] Asiento '{item['key']}' tiene {len(lines)} líneas → "
+                  f"dividiendo en {total_parts} sub-asientos de máx. {max_lines} líneas")
+
+            for part_idx, start in enumerate(range(0, len(lines), max_lines), 1):
+                chunk_lines = lines[start : start + max_lines]
+                sub_cab = dict(item["cab"])
+                original_ref2 = sub_cab.get("Reference2") or item["key"]
+                sub_cab["Reference2"] = f"{original_ref2}-{part_idx}/{total_parts}"
+                result.append({
+                    "key":   f"{item['key']}-{part_idx}",
+                    "cab":   sub_cab,
+                    "lines": chunk_lines,
+                })
+        return result
+
+    def post_all(self, items: list[dict], build_fn=None, chunk_size: int = 20,
+                 max_lines_per_entry: int = 500):
         """
         Orquesta el envío de todos los asientos contables, dividiéndolos en
         sub-lotes (chunks) para evitar saturar el Service Layer o exceder
         el límite de tiempo de respuesta.
 
         Args:
-            items: Lista de diccionarios con la data de cada asiento.
-            build_fn: Función constructora de JSON opcional.
-            chunk_size: Tamaño de cada lote (default 20).
+            items:               Lista de asientos {key, cab, lines}.
+            build_fn:            Función constructora de JSON opcional.
+            chunk_size:          Nº de asientos por $batch (default 20).
+            max_lines_per_entry: Máx. líneas por asiento antes de hacer split (default 500).
         """
         if self.breaker.check():
             raise RuntimeError("Circuit breaker abierto; en enfriamiento.")
+
+        # Partir asientos que superen el límite de líneas ANTES de enviar
+        items = self._split_large_items(items, max_lines=max_lines_per_entry)
 
         total_results = {"ok": 0, "fail": 0, "results": []}
         
         # Segmentación de la carga total
         for i in range(0, len(items), chunk_size):
             chunk = items[i : i + chunk_size]
-            # print(f"-> Procesando lote {i//chunk_size + 1} ({len(chunk)} registros de {len(items)})...")
             
             chunk_res = self._post_batch_chunk(chunk, build_fn)
             
@@ -90,6 +123,7 @@ class JournalPoster:
                 break
                 
         return total_results
+
 
     def _post_batch_chunk(self, items: list[dict], build_fn=None):
         """
@@ -137,7 +171,8 @@ class JournalPoster:
                 finally:
                     self.limiter.release()
 
-            raw_res = with_retry(call, retries=5, base_ms=500, max_ms=30_000)
+            raw_res = with_retry(call, retries=5, base_ms=500, max_ms=30_000,
+                                 no_retry_on_timeout=True)  # ← NO reintentar en timeout: SAP puede ya haber creado los asientos
             self.breaker.on_success()
         except Exception as e:
             self.breaker.on_fail()

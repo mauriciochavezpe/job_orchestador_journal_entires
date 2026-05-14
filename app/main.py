@@ -121,10 +121,8 @@ def collect_items_for_post():
                 "TransactionCode": first_line.get("TransactionCode") or '',
                 "Reference2": first_line.get("Reference2") or ''
             }
-            if not items:  # Print solo del primer asiento
-                # print(f"[DEBUG] Cabecera extraída para asiento {key}:\n{cab}\n")
-                
-                items.append({"key": key, "cab": cab, "lines": lines})
+            # print(f"[DEBUG] Cabecera extraída para asiento {key}:\n{cab}\n")
+            items.append({"key": key, "cab": cab, "lines": lines})
         else:
             print(f"[SKIP] Asiento {key} no balanceado (D={s['d']}, C={s['c']}).")
             
@@ -136,12 +134,13 @@ def post_to_sl():
     inicializa el poster y ejecuta la carga de datos.
     """
     # Inicialización del cliente SAP Service Layer
+    sl_timeout_ms = int(os.getenv("SL_TIMEOUT", "180000"))  # lee del .env, default 180s
     sl = ServiceLayerClient(
         base_url=os.getenv("SL_BASE_URL"),
         company_db=os.getenv("CompanyDB"),
         user_name=os.getenv("user_name"),
         password=os.getenv("Password"),
-        timeout=30_000,
+        timeout=sl_timeout_ms,
     )
     
     # Repositorio de cuentas con caché
@@ -151,6 +150,7 @@ def post_to_sl():
     rps = float(os.getenv("SL_RPS", "3"))
     conc = int(os.getenv("SL_CONCURRENCY", "1"))
     chunk_size = int(os.getenv("CHUNK_SIZE", "20"))
+    max_lines = int(os.getenv("MAX_LINES_PER_ENTRY", "9999"))
 
     # Configuración del póster con Circuit Breaker
     poster = JournalPoster(
@@ -166,7 +166,7 @@ def post_to_sl():
     
     # Recolección y envío
     items = collect_items_for_post()
-    res = poster.post_all(items, chunk_size=chunk_size)
+    res = poster.post_all(items, chunk_size=chunk_size, max_lines_per_entry=max_lines)
     
     finished = time.time()
     finished_iso = datetime.now().isoformat(timespec="seconds")
@@ -291,13 +291,15 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
-                # Las 5 dimensiones: primero del OHEM (CostingCode*), fallback al JSON (OcrCode*)
-                "CostingCode"  : row.get("CostingCode")  or row.get("OcrCode1") or "",
+                "CostingCode" : row.get("CostingCode") or row.get("OcrCode1") or "",
                 "CostingCode2" : row.get("CostingCode2") or row.get("OcrCode2") or "",
                 "CostingCode3" : row.get("CostingCode3") or row.get("OcrCode3") or "",
-                "CostingCode4" : row.get("CostingCode4") or row.get("OcrCode4") or "",
-                "CostingCode5" : row.get("CostingCode5") or row.get("OcrCode5") or "",
+                "CostingCode4" : row.get("CostingCode4") or row.get("OcrCode4") or ""
+               
             }
+            # si los costingCode del 1 a 4 tiene valores agrega al costing 5, sino ponle ""
+            line["CostingCode5"] = row.get("CostingCode5") or row.get("OcrCode5") or ""
+
             # Campos opcionales: solo se agregan si tienen valor
             # for i in range(1, 6):
             #     val = row.get(f"OcrCode{i}")
@@ -337,12 +339,13 @@ def post_payload_to_sl(payload: list) -> dict:
     """
     Procesa un payload JSON plano enviado por REST API y lo envía al Service Layer.
     """
+    sl_timeout_ms = int(os.getenv("SL_TIMEOUT", "180000"))  # lee del .env, default 180s
     sl = ServiceLayerClient(
         base_url=os.getenv("SL_BASE_URL"),
         company_db=os.getenv("CompanyDB"),
         user_name=os.getenv("user_name"),
         password=os.getenv("Password"),
-        timeout=30_000,
+        timeout=sl_timeout_ms,
     )
     
     repo = AccountsRepo(sl, ttl_seconds=3600, max_items=20000)
@@ -351,6 +354,10 @@ def post_payload_to_sl(payload: list) -> dict:
     rps = float(os.getenv("SL_RPS", "3"))
     conc = int(os.getenv("SL_CONCURRENCY", "1"))
     chunk_size = int(os.getenv("CHUNK_SIZE", "20"))
+    # MAX_LINES_PER_ENTRY: máx líneas por asiento antes de hacer split.
+    # Aumentar este valor reduce el número de sub-asientos creados.
+    # Si SAP puede procesar 8000 líneas sin timeout, usar 9999.
+    max_lines = int(os.getenv("MAX_LINES_PER_ENTRY", "9999"))
 
     poster = JournalPoster(
         sl, repo,
@@ -364,7 +371,7 @@ def post_payload_to_sl(payload: list) -> dict:
     started_iso = datetime.now().isoformat(timespec="seconds")
     
     items = process_payload_for_post(payload, sl=sl)
-    res = poster.post_all(items, chunk_size=chunk_size)
+    res = poster.post_all(items, chunk_size=chunk_size, max_lines_per_entry=max_lines)
     
     finished = time.time()
     finished_iso = datetime.now().isoformat(timespec="seconds")
@@ -377,7 +384,8 @@ def post_payload_to_sl(payload: list) -> dict:
             "rps": rps,
             "concurrency": conc,
             "dry_run": poster.dry_run,
-            "chunk_size": chunk_size
+            "chunk_size": chunk_size,
+            "max_lines_per_entry": max_lines
         },
         "counts": {
             "items_procesados": len(items),
