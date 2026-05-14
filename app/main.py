@@ -221,7 +221,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 if card_code not in ohem_cache:
                     try:
                         # Usar el schema de la configuración o el hardcoded como fallback
-                        db_schema = getattr(sl, 'db_schema', None) or "LLAMA_GAS_0326"
+                        db_schema = getattr(sl, 'db_schema', None) or "TEST_INTEGRACION"
                         
                         sql = (
                             f"SELECT H1.\"U_CE_PVAS\", H1.\"U_RML_CECO1\", H1.\"U_RML_CECO2\","
