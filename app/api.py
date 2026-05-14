@@ -37,7 +37,7 @@ def _cleanup_expired_keys():
     for k in expired:
         del _processed_keys[k]
 
-@app.post("/api/asientos")
+@app.post("/api/qas/asientos")
 async def process_journal_entries(
     payload: List[Dict[str, Any]],
     x_idempotency_key: Optional[str] = Header(default=None, alias="X-Idempotency-Key")
