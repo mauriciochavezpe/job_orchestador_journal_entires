@@ -8,9 +8,9 @@ import time
 
 app = FastAPI(
     title="Journal Entries Orchestrator API",
-    docs_url="/api/asientos/docs",
-    redoc_url="/api/asientos/redoc",
-    openapi_url="/api/asientos/openapi.json"
+    docs_url="/api/sl/qas/asientos/docs",
+    redoc_url="/api/sl/qas/asientos/redoc",
+    openapi_url="/api/sl/qas/asientos/openapi.json"
 )
 
 # Configurar CORS para permitir que tu frontend se comunique con la API
@@ -37,7 +37,7 @@ def _cleanup_expired_keys():
     for k in expired:
         del _processed_keys[k]
 
-@app.post("/api/qas/asientos")
+@app.post("/api/sl/qas/asientos")
 async def process_journal_entries(
     payload: List[Dict[str, Any]],
     x_idempotency_key: Optional[str] = Header(default=None, alias="X-Idempotency-Key")
@@ -92,4 +92,4 @@ async def process_journal_entries(
         raise HTTPException(status_code=500, detail=f"Error en el procesamiento: {str(e)}")
 
 if __name__ == "__main__":
-    uvicorn.run("app.api:app", host="0.0.0.0", port=3018, reload=True, timeout_keep_alive=300)
+    uvicorn.run("app.api:app", host="0.0.0.0", port=3019, reload=True, timeout_keep_alive=300)

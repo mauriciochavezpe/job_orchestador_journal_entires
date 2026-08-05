@@ -109,6 +109,7 @@ class JournalPoster:
         # Segmentación de la carga total
         for i in range(0, len(items), chunk_size):
             chunk = items[i : i + chunk_size]
+            print(f"-> Procesando lote {i//chunk_size + 1} ({len(chunk)} registros de {len(items)})...")
             
             chunk_res = self._post_batch_chunk(chunk, build_fn)
             
@@ -171,11 +172,14 @@ class JournalPoster:
                 finally:
                     self.limiter.release()
 
+            print(f"[BATCH] Enviando $batch con {len(valid_requests)} asiento(s) a SAP Service Layer...")
             raw_res = with_retry(call, retries=5, base_ms=500, max_ms=30_000,
                                  no_retry_on_timeout=True)  # ← NO reintentar en timeout: SAP puede ya haber creado los asientos
+            print(f"[BATCH] Respuesta de SAP recibida. Status: {raw_res.status_code}")
             self.breaker.on_success()
         except Exception as e:
             self.breaker.on_fail()
+            print(f"[BATCH] Error al enviar lote: {e}")
             for cid in ordered_cids:
                 it = items_by_cid[cid]["item"]
                 results.append({

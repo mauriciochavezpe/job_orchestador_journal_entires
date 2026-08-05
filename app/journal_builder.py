@@ -20,6 +20,7 @@ def build_journal_entry(cab: dict, lines: list[dict], *, local_currency: str = "
             "Credit": float(l.get("Credit") or 0),
             "LineMemo": l.get("LineMemo") or je["Memo"],
             'FCCurrency':'',
+            #'FCCurrency':l.get('FCCurrency') or "PEN",
         }
         # Lógica para Cuentas Asociadas vs Cuentas Normales
         # Siempre enviamos AccountCode para que SAP use la cuenta explícita del asiento.

@@ -2,7 +2,7 @@
 module.exports = {
     apps: [
         {
-            name: "sap-journal-api-qas",
+            name: "asientos-qas",
             script: "python",
             args: "-m uvicorn app.api:app --host 0.0.0.0 --port 3019",
             interpreter: "none",

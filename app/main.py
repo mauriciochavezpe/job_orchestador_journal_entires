@@ -197,7 +197,7 @@ def post_to_sl():
     }
     
     _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
-    # print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+    print(f"-> Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
 
 
 def process_payload_for_post(payload: list, sl=None) -> list:
@@ -221,13 +221,13 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 if card_code not in ohem_cache:
                     try:
                         # Usar el schema de la configuración o el hardcoded como fallback
-                        db_schema = getattr(sl, 'db_schema', None) or "TEST_INTEGRACION"
+                        db_schema = getattr(sl, 'db_schema', None) or "LLAMA_GAS_0326"
                         
                         sql = (
                             f"SELECT H1.\"U_CE_PVAS\", H1.\"U_RML_CECO1\", H1.\"U_RML_CECO2\","
                             f" H1.\"U_RML_CECO3\", H1.\"U_RML_CECO4\", H1.\"CostCenter\", H1.\"Code\""
                             f" FROM \"{db_schema}\".\"OCRD\" O"
-                            f" INNER JOIN \"{db_schema}\".\"OHEM\" H1"
+                            f" LEFT JOIN \"{db_schema}\".\"OHEM\" H1"
                             f" ON O.\"CardCode\"=H1.\"U_CE_PVAS\""
                             f" WHERE O.\"CardCode\"='{card_code}'"
                         )
@@ -287,7 +287,7 @@ def process_payload_for_post(payload: list, sl=None) -> list:
                 "U_INFOPE01": row.get("U_INFOPE01") or row.get("u_infope01") or '',
                 "U_INFOPE02": row.get("U_INFOPE02") or row.get("u_infope02") or '',
                 "ReferenceDate": row.get("ReferenceDate") or row.get("referencedate") or '',
-                "FCCurrency": row.get("FCCurrency") or row.get("fccurrency") or 'PEN',
+                "FCCurrency": row.get("FCCurrency") or 'PEN',
                 "Debit": float(row.get("Debit") or row.get("debit") or 0.0),
                 "Credit": float(row.get("Credit") or row.get("credit") or 0.0),
                 "Reference2": row.get("Reference2Line") or row.get("reference2line") or row.get("Reference2") or row.get("reference2") or '',
@@ -396,7 +396,7 @@ def post_payload_to_sl(payload: list) -> dict:
     }
     
     _dump_json_result(result_doc, out_dir=PROJECT_ROOT / "out")
-    # print(f"-> API Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
+    print(f"-> API Proceso terminado. Exitosos: {res['ok']}, Fallidos: {res['fail']}")
     
     return result_doc
 
